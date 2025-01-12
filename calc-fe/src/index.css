@@ -59,6 +59,33 @@
   }
 }
 
+
+
+.mainButton{
+background-color: #232329;
+width: 125px;
+height: 30px;
+border-radius: 5px;
+}
+.navButton{
+background-color: #232329;
+width: 50px;
+height: 30px;
+padding: 2px;
+border-radius: 5px;
+}
+.colorPicker{
+  background-color: #232329;
+  width: 30px;
+  height: 30px;
+  border-radius: 5px;
+}
+.active{
+  background-color: #403d6a;
+}
+.mainButton:hover{
+  background-color: #403d6a;
+}
 @layer base {
   * {
     @apply border-border;
@@ -67,3 +94,51 @@
     @apply bg-background text-foreground;
   }
 }
+
+.slider-container {
+  position: relative;
+  width: 100%; 
+  display: flex;
+  align-items: center;
+}
+
+.slider {
+  -webkit-appearance: none; 
+  appearance: none; 
+  width: 80%; 
+  height: 8px; 
+  background: #ddd; 
+  outline: none; 
+  opacity: 0.7;
+  -webkit-transition: .2s; 
+  transition: opacity .2s;
+  margin-left: 10px; 
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none; 
+  appearance: none; 
+  width: 16px; 
+  height: 16px; 
+  background: #403d6a; 
+  cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+  width: 16px; 
+  height: 16px; 
+  background: #403d6a; 
+  cursor: pointer; 
+}
+
+
+.slider-value {
+  font-size: 14px;
+  color: white;
+  background-color: none; 
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+
+
+

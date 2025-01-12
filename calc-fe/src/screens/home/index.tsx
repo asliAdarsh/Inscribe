@@ -6,6 +6,11 @@ import Draggable from 'react-draggable';
 // import {SWATCHES} from '@/constants';
 import '@/screens/home/inde.css'
 // import {LazyBrush} from 'lazy-brush';
+import undoImage from './assets/undo.png';
+import redoImage from './assets/redo.png';
+import pencilImage from './assets/pencil.png';
+import eraserImage from './assets/eraser.png';
+import textBoxImage from './assets/textbox.png';
 
 interface GeneratedResult {
     expression: string;
@@ -24,13 +29,15 @@ export default function Home() {
     const [color, setColor] = useState('rgb(255, 255, 255)');
     const [reset, setReset] = useState(false);
     const [dictOfVars, setDictOfVars] = useState({});
-    const [result, setResult] = useState<GeneratedResult[]>();
+    const [result, setResult] = useState<GeneratedResult>();
     const [latexPosition, setLatexPosition] = useState({ x: 10, y: 200 });
     const [latexExpression, setLatexExpression] = useState<Array<string>>([]);
     const [history, setHistory] = useState<ImageData[]>([]);
     const [redoStack, setRedoStack] = useState<ImageData[]>([]);
     const [strokeWidth, setStrokeWidth] = useState(3);
     const [selectedTool, setSelectedTool] = useState<string>("pen")
+    const [textBoxContent, setTextBoxContent] = useState(''); 
+    const [textBoxVisible, setTextBoxVisible] = useState(false);
 
     // const lazyBrush = new LazyBrush({
     //     radius: 10,
@@ -71,7 +78,7 @@ export default function Home() {
     
         if (canvas) {
             const ctx = canvas.getContext('2d');
-            canvasRef.current.style.background = 'black';
+            canvasRef.current.style.background = "#161718";
             if (ctx) {
                 canvas.width = window.innerWidth;
                 canvas.height = window.innerHeight - canvas.offsetTop;
@@ -279,6 +286,49 @@ export default function Home() {
         }
     };
 
+    const enableTextBox = () => {
+        setTextBoxVisible(true);
+        const canvas = canvasRef.current;
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                // Remove any previously created input elements
+                document.querySelectorAll('.text-input').forEach(input => input.remove());
+
+                // Add an event listener for the canvas click to create a textbox
+                canvas.addEventListener('click', (e) => {
+                    const x = e.offsetX;
+                    const y = e.offsetY;
+
+                    // Create the input element
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.classList.add('text-input');
+                    input.style.position = 'absolute';
+                    input.style.left = `${x}px`;
+                    input.style.top = `${y}px`;
+                    input.style.background = 'transparent';
+                    input.style.color = color;
+                    input.style.border = 'none';
+                    input.style.outline = 'none';
+                    input.style.fontSize = '20px';  // Set font size for the input box
+                    input.style.zIndex = '1000';
+                    document.body.appendChild(input);
+                    input.focus();
+
+                    // Handle blur event when user finishes typing
+                    input.addEventListener('blur', () => {
+                        // Set a reasonable font size for canvas rendering (adjust as needed)
+                        const canvasFontSize = '20px';  // Larger font size for the canvas text
+                        ctx.font = `bold ${canvasFontSize} Arial`;
+                        ctx.fillStyle = color;
+                        ctx.fillText(input.value, x, y);
+                        document.body.removeChild(input);
+                    });
+                }, { once: true });
+            }
+        }    
+    }
     const saveToHistory = () => {
         const canvas = canvasRef.current;
         if (canvas) {
@@ -334,87 +384,100 @@ export default function Home() {
             // eslint-disable-next-line react-hooks/rules-of-hooks
             useEraser();
         }
-    };    
+        else if (tool === "textBox"){
+            enableTextBox();
+        }
+    };   
 
     return (
         <>
-            <div className='flex justify-between mt-2'>
+            <div className=' flex justify-between mt-2 '>
                 <Button
                     onClick={() => setReset(true)}
-                    className='z-20 bg-red-500 text-white h-10 w-20 mr-10 ml-10 hover:bg-red-200'
+                    className='z-20 mainButton text-white  mr-10 ml-10 hover:bg-[#403d6a] '
                     variant='default' 
                     color='red'
                 >
                     Reset
                 </Button>
+                <div className= " flex   ">
                 <Button
-                    onClick={runRoute}
-                    className='z-20 bg-red-500 text-white h-10 w-20 mr-10 hover:bg-red-200'
+                    // onClick={disableEraser}
+                    onClick={() => handleToolSelect("pen")}
+                    className={`z-20 navButton mr-10 text-white hover:bg-[#403d6a]  ${selectedTool === "pen" ? "active" : ""}`}
                     variant='default'
                     color='white'
                 >
-                    Run
+                <img src={pencilImage} alt="Pencil" className="h-6 w-6"/>
+
                 </Button>
                  <Button
                     // onClick={useEraser}
                     onClick={() => handleToolSelect("eraser")}
-                    className={`z-20 h-10 w-20 mr-10 text-black bg-green-300 hover:bg-cyan-200 ${selectedTool === "eraser" ? "border-4 border-blue-600" : ""}`}
+                    className={`z-20 navButton mr-10 text-white hover:bg-[#403d6a] ${selectedTool === "eraser" ? "active" : ""}`}
                     variant='default'
                     color='white'
                 >
-                    Eraser
+                    <img src={eraserImage} alt="Eraser" className="h-6 w-6"/>
                 </Button>
                 <Button
-                    // onClick={disableEraser}
-                    onClick={() => handleToolSelect("pen")}
-                    className={`z-20 h-10 w-20 mr-10 text-black bg-green-300 hover:bg-cyan-200 ${selectedTool === "pen" ? "border-4 border-blue-600" : ""}`}
+                    // onClick={enableTextBox}
+                    onClick={() => handleToolSelect("textBox")}
+                    className={`z-20 navButton mr-10 text-white hover:bg-[#403d6a]  ${selectedTool === "textBox" ? "active" : ""}`}
                     variant='default'
                     color='white'
                 >
-                    Pen
+                <img src={textBoxImage} alt="Text Box" className="h-6 w-6 "/>
+
                 </Button>
                 <Button
                     onClick={undo}
-                    className='z-20 bg-green-300 text-black h-10 w-20 mr-10 hover:bg-cyan-200'
+                    className='z-20 navButton mr-10 text-white hover:bg-[#403d6a] '
                     variant='default'
                     color='white'
                 >
-                    Undo
+                    <img src={undoImage} alt="Undo" className="h-6 w-6"/>
                 </Button>
                 <Button
                     onClick={redo}
-                    className='z-20 bg-green-300 text-black h-10 w-20 mr-10 hover:bg-cyan-200'
+                    className='z-20 navButton mr-10 text-white hover:bg-[#403d6a] '
                     variant='default'
                     color='white'
                 >
-                    Redo
+                <img src={redoImage} alt="Redo" className="h-6 w-6"/>                    
                 </Button>
-                <label id="stroke" className="z-20 h-10 w-30 mr-10">
-                <span className="z-20 text-2xl text-white font-mono">{strokeWidth}px</span>
-                   <input
-                      id = "slider"
-                      type="range"
-                      min="1"
-                      max="20"
-                      value={strokeWidth}
-                      onChange={(e) => setStrokeWidth(Number(e.target.value))}
-                      className="ml-2 mt-4"
-                      />
-                </label>
-                {/* <input id="stroke" name='stroke' type="color"></input>
-                <Group className='z-20 mr-5'>
-                    {SWATCHES.map((swatch) => (
-                        <ColorSwatch key={swatch} color={swatch} onClick={() => setColor(swatch)} />
-                    ))}
-                </Group> */}
+
+                <div id="stroke" className="z-20 h-10 w-30 mr-10">
+        <div className="slider-container">
+          <span className="slider-value">{strokeWidth}px</span>
+          <input
+            id="slider"
+            type="range"
+            min="1"
+            max="20"
+            value={strokeWidth}
+            onChange={(e) => setStrokeWidth(Number(e.target.value))}
+            className="ml-2 mt-2 slider"
+          />
+        </div>
+      </div>
                  <input
                   id="color-picker"
                   type="color"
                   value={color}
                   onChange={(e) => setColor(e.target.value)}
                   onClick={(e) => e.stopPropagation()}
-                  className="z-20 h-10 w-20 p-0 border-none mr-10 ml-5 cursor-pointer mt-1 rounded-md"
+                  className="z-20 colorPicker p-0 border-none mr-10  cursor-pointer rounded-md"
                  />
+                 </div>
+                <Button
+                    onClick={runRoute}
+                    className='z-20 mainButton text-white  mr-10 ml-10 hover:bg-[#403d6a]'
+                    variant='default'
+                    color='white'
+                >
+                    Run
+                </Button>
             </div>
             <canvas
                 ref={canvasRef}
@@ -432,7 +495,7 @@ export default function Home() {
         defaultPosition={{ x: latexPosition.x, y: latexPosition.y + 30 * index }} // Offset by index
         onStop={(e, data) => setLatexPosition({ x: data.x, y: data.y })}
     >
-        <div className="absolute p-2 text-white rounded shadow-md">
+        <div className="absolute p-2 text-white rounded ">
             <div className="latex-content">{latex}</div>
         </div>
     </Draggable>
