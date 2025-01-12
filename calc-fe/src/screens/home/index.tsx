@@ -24,7 +24,7 @@ export default function Home() {
     const [color, setColor] = useState('rgb(255, 255, 255)');
     const [reset, setReset] = useState(false);
     const [dictOfVars, setDictOfVars] = useState({});
-    const [result, setResult] = useState<GeneratedResult>();
+    const [result, setResult] = useState<GeneratedResult[]>();
     const [latexPosition, setLatexPosition] = useState({ x: 10, y: 200 });
     const [latexExpression, setLatexExpression] = useState<Array<string>>([]);
     const [history, setHistory] = useState<ImageData[]>([]);
@@ -48,8 +48,12 @@ export default function Home() {
 
     useEffect(() => {
         if (result) {
-            renderLatexToCanvas(result.expression, result.answer);
+            for (const r of result) {
+                console.log("r", r);
+                renderLatexToCanvas(r.expression, r.answer, );
+            }
         }
+        console.log(result);
     }, [result]);
 
     useEffect(() => {
@@ -108,13 +112,15 @@ export default function Home() {
     // };
 
     const renderLatexToCanvas = (expression: string, answer: string, isMath: boolean) => {
+
+    
         // Ensure inputs are strings
         const ensureString = (input: any): string => {
             return typeof input === "string" ? input : String(input);
         };
     
         // Escape special characters for LaTeX
-        const escapeForLatex = (input: string) => {
+        const escapeForLatex = (input: string): string => {
             return input.replace(/_/g, '\\_'); // Escape underscores
         };
     
@@ -135,9 +141,9 @@ export default function Home() {
         const latex = `\\(\\LARGE{${formattedExpression} \\quad = \\quad ${formattedAnswer}}\\)`;
     
         // Update state with the new LaTeX expression
-        setLatexExpression([...latexExpression, latex]);
+        setLatexExpression((prevLatex) => [...prevLatex, latex]); // Fix is here
     
-        // Clear the main canvas
+        // Clear the main canvas (if needed)
         const canvas = canvasRef.current;
         if (canvas) {
             const ctx = canvas.getContext('2d');
@@ -146,7 +152,7 @@ export default function Home() {
             }
         }
     };
-   
+       
 
 
     const resetCanvas = () => {
@@ -203,22 +209,22 @@ export default function Home() {
                     dict_of_vars: dictOfVars
                 }
             });
-
+    
             const resp = await response.data;
             console.log('Response', resp);
             resp.data.forEach((data: Response) => {
                 if (data.assign === true) {
-                    // dict_of_vars[resp.result] = resp.answer;
                     setDictOfVars({
                         ...dictOfVars,
                         [data.expr]: data.result
                     });
                 }
             });
+    
             const ctx = canvas.getContext('2d');
-            const imageData = ctx!.getImageData(0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
-
+    
             for (let y = 0; y < canvas.height; y++) {
                 for (let x = 0; x < canvas.width; x++) {
                     const i = (y * canvas.width + x) * 4;
@@ -230,22 +236,26 @@ export default function Home() {
                     }
                 }
             }
-
+    
             const centerX = (minX + maxX) / 2;
             const centerY = (minY + maxY) / 2;
-
+    
             setLatexPosition({ x: centerX, y: centerY });
             resp.data.forEach((data: Response) => {
                 setTimeout(() => {
-                    setResult({
+                    const resultFromBack = {
                         expression: data.expr,
                         answer: data.result
-                    });
+                    };
+                    setResult((prevRes) => [
+                        ...(prevRes || []), resultFromBack
+                    ]);
                 }, 1000);
             });
         }
     };
-
+    
+    
     const useEraser = () => {
         const canvas = canvasRef.current;
         if (canvas) {
@@ -417,15 +427,15 @@ export default function Home() {
             />
 
             {latexExpression && latexExpression.map((latex, index) => (
-                <Draggable
-                    key={index}
-                    defaultPosition={latexPosition}
-                    onStop={(e, data) => setLatexPosition({ x: data.x, y: data.y })}
-                >
-                    <div className="absolute p-2 text-white rounded shadow-md">
-                        <div className="latex-content">{latex}</div>
-                    </div>
-                </Draggable>
+        <Draggable
+        key={index}
+        defaultPosition={{ x: latexPosition.x, y: latexPosition.y + 30 * index }} // Offset by index
+        onStop={(e, data) => setLatexPosition({ x: data.x, y: data.y })}
+    >
+        <div className="absolute p-2 text-white rounded shadow-md">
+            <div className="latex-content">{latex}</div>
+        </div>
+    </Draggable>
             ))}
         </>
     );
