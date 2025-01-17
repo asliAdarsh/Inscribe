@@ -1,9 +1,35 @@
-/* #color-picker {
-    appearance: auto;
-    border: none;
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    cursor: pointer;
-    display: block;
-} */
+.tools{
+    display: flex;
+}
+
+.useful-tools{
+    display: flex;
+    
+}
+@media (max-width: 810px){
+    .tools{
+      flex-direction: column;
+      position: fixed;
+      left: 0;
+      top: 0;
+      background-color: #161718;
+      padding: 10px;
+      z-index: 100;
+      height: 100vh;
+      overflow-y: auto;
+      margin-top: 50px;
+      margin-left: 10px;
+    }
+
+    .tool{
+        margin-top: 20px;
+    }
+
+    .tool-container{
+        margin-left: -25px;
+    }
+
+    .stroke-tool{
+        width: 200px;
+    }
+}
