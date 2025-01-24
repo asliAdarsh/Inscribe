@@ -1,11 +1,8 @@
-// import { ColorSwatch, Group } from '@mantine/core';
 import { Button } from "@/components/ui/button";
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import Draggable from "react-draggable";
-// import {SWATCHES} from '@/constants';
 import "@/screens/home/inde.css";
-// import {LazyBrush} from 'lazy-brush';
 import undoImage from "./assets/undo.png";
 import redoImage from "./assets/redo.png";
 import pencilImage from "./assets/pencil.png";
@@ -38,12 +35,6 @@ export default function Home() {
   const [selectedTool, setSelectedTool] = useState<string>("pen");
   const [textBoxContent, setTextBoxContent] = useState("");
   const [textBoxVisible, setTextBoxVisible] = useState(false);
-
-  // const lazyBrush = new LazyBrush({
-  //     radius: 10,
-  //     enabled: true,
-  //     initialPoint: { x: 0, y: 0 },
-  // });
 
   useEffect(() => {
     if (latexExpression.length > 0 && window.MathJax) {
@@ -103,60 +94,41 @@ export default function Home() {
       });
     };
 
+    loadCanvasFromLocalStorage();
+
     return () => {
       document.head.removeChild(script);
     };
   }, []);
-
-  // const renderLatexToCanvas = (expression: string, answer: string) => {
-  //     const latex = `\\(\\LARGE{${expression} = ${answer}}\\)`;
-  //     setLatexExpression([...latexExpression, latex]);
-
-  //     // Clear the main canvas
-  //     const canvas = canvasRef.current;
-  //     if (canvas) {
-  //         const ctx = canvas.getContext('2d');
-  //         if (ctx) {
-  //             ctx.clearRect(0, 0, canvas.width, canvas.height);
-  //         }
-  //     }
-  // };
 
   const renderLatexToCanvas = (
     expression: string,
     answer: string,
     isMath: boolean
   ) => {
-    // Ensure inputs are strings
     const ensureString = (input: any): string => {
       return typeof input === "string" ? input : String(input);
     };
 
-    // Escape special characters for LaTeX
     const escapeForLatex = (input: string): string => {
-      return input.replace(/_/g, "\\_"); // Escape underscores
+      return input.replace(/_/g, "\\_");
     };
 
-    // Ensure inputs are strings before processing
     const safeExpression = ensureString(expression);
     const safeAnswer = ensureString(answer);
 
-    // Format the expression and answer based on their type
     const formattedExpression = isMath
-      ? safeExpression // Directly use math expressions
-      : `\\text{${escapeForLatex(safeExpression)}}`; // Format plain text
+      ? safeExpression
+      : `\\text{${escapeForLatex(safeExpression)}}`;
 
     const formattedAnswer = isMath
-      ? safeAnswer // Directly use math expressions
-      : `\\text{${escapeForLatex(safeAnswer)}}`; // Format plain text
+      ? safeAnswer
+      : `\\text{${escapeForLatex(safeAnswer)}}`;
 
-    // Construct the LaTeX string
     const latex = `\\(\\LARGE{${formattedExpression} \\quad = \\quad ${formattedAnswer}}\\)`;
 
-    // Update state with the new LaTeX expression
-    setLatexExpression((prevLatex) => [...prevLatex, latex]); // Fix is here
+    setLatexExpression((prevLatex) => [...prevLatex, latex]);
 
-    // Clear the main canvas (if needed)
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext("2d");
@@ -189,6 +161,7 @@ export default function Home() {
       }
     }
   };
+
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing) {
       return;
@@ -204,8 +177,10 @@ export default function Home() {
       }
     }
   };
+
   const stopDrawing = () => {
     setIsDrawing(false);
+    saveCanvasToLocalStorage();
   };
 
   const runRoute = async () => {
@@ -243,7 +218,6 @@ export default function Home() {
         for (let x = 0; x < canvas.width; x++) {
           const i = (y * canvas.width + x) * 4;
           if (imageData.data[i + 3] > 0) {
-            // If pixel is not transparent
             minX = Math.min(minX, x);
             minY = Math.min(minY, y);
             maxX = Math.max(maxX, x);
@@ -297,19 +271,16 @@ export default function Home() {
     if (canvas) {
       const ctx = canvas.getContext("2d");
       if (ctx) {
-        // Remove any previously created input elements
         document
           .querySelectorAll(".text-input")
           .forEach((input) => input.remove());
 
-        // Add an event listener for the canvas click to create a textbox
         canvas.addEventListener(
           "click",
           (e) => {
             const x = e.offsetX;
             const y = e.offsetY;
 
-            // Create the input element
             const input = document.createElement("input");
             input.type = "text";
             input.classList.add("text-input");
@@ -320,19 +291,18 @@ export default function Home() {
             input.style.color = color;
             input.style.border = "none";
             input.style.outline = "none";
-            input.style.fontSize = "20px"; // Set font size for the input box
+            input.style.fontSize = "20px";
             input.style.zIndex = "1000";
             document.body.appendChild(input);
             input.focus();
 
-            // Handle blur event when user finishes typing
             input.addEventListener("blur", () => {
-              // Set a reasonable font size for canvas rendering
-              const canvasFontSize = "20px"; // Larger font size for the canvas text
+              const canvasFontSize = "20px";
               ctx.font = `bold ${canvasFontSize} Arial`;
               ctx.fillStyle = color;
               ctx.fillText(input.value, x, y);
               document.body.removeChild(input);
+              saveCanvasToLocalStorage();
             });
           },
           { once: true }
@@ -340,6 +310,7 @@ export default function Home() {
       }
     }
   };
+
   const saveToHistory = () => {
     const canvas = canvasRef.current;
     if (canvas) {
@@ -357,13 +328,13 @@ export default function Home() {
       if (canvas) {
         const ctx = canvas.getContext("2d");
         if (ctx) {
-          const lastState = history.pop(); // Remove the last saved state
+          const lastState = history.pop();
           setRedoStack((prev) => [
             ...prev,
             ctx.getImageData(0, 0, canvas.width, canvas.height),
-          ]); // Save the current state to the redo stack
+          ]);
           if (lastState) {
-            ctx.putImageData(lastState, 0, 0); // Restore the previous state
+            ctx.putImageData(lastState, 0, 0);
           }
         }
       }
@@ -376,13 +347,13 @@ export default function Home() {
       if (canvas) {
         const ctx = canvas.getContext("2d");
         if (ctx) {
-          const redoState = redoStack.pop(); // Remove the last state from the redo stack
+          const redoState = redoStack.pop();
           setHistory((prev) => [
             ...prev,
             ctx.getImageData(0, 0, canvas.width, canvas.height),
-          ]); // Save the current state to the history stack
+          ]);
           if (redoState) {
-            ctx.putImageData(redoState, 0, 0); // Restore the redo state
+            ctx.putImageData(redoState, 0, 0);
           }
         }
       }
@@ -394,13 +365,33 @@ export default function Home() {
 
     if (tool === "pen") {
       disableEraser();
-    }
-    // If eraser is selected, enable eraser mode
-    else if (tool === "eraser") {
-      // eslint-disable-next-line react-hooks/rules-of-hooks
+    } else if (tool === "eraser") {
       useEraser();
     } else if (tool === "textBox") {
       enableTextBox();
+    }
+  };
+
+  const saveCanvasToLocalStorage = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const dataURL = canvas.toDataURL("image/png");
+      localStorage.setItem("canvasData", dataURL);
+    }
+  };
+
+  const loadCanvasFromLocalStorage = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      const dataURL = localStorage.getItem("canvasData");
+      if (dataURL && ctx) {
+        const img = new Image();
+        img.src = dataURL;
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0);
+        };
+      }
     }
   };
 
@@ -416,58 +407,63 @@ export default function Home() {
           Reset
         </Button>
         <div className="useful-tools">
-        <div className="tools">
-          <Button
-            // onClick={disableEraser}
-            onClick={() => handleToolSelect("pen")}
-            className={`z-20 navButton mr-10 text-white hover:bg-[#403d6a]  ${
-              selectedTool === "pen" ? "active" : ""
-            }`}
-            variant="default"
-            color="white"
-          >
-            <img src={pencilImage} alt="Pencil" className="h-6 w-6" />
-          </Button>
-          <Button
-            // onClick={useEraser}
-            onClick={() => handleToolSelect("eraser")}
-            className={`tool z-20 navButton mr-10 text-white hover:bg-[#403d6a] ${
-              selectedTool === "eraser" ? "active" : ""
-            }`}
-            variant="default"
-            color="white"
-          >
-            <img src={eraserImage} alt="Eraser" className="h-6 w-6" />
-          </Button>
-          <Button
-            // onClick={enableTextBox}
-            onClick={() => handleToolSelect("textBox")}
-            className={`tool z-20 navButton mr-10 text-white hover:bg-[#403d6a]  ${
-              selectedTool === "textBox" ? "active" : ""
-            }`}
-            variant="default"
-            color="white"
-          >
-            <img src={textBoxImage} alt="Text Box" className="h-6 w-6 " />
-          </Button>
-          <Button
-            onClick={undo}
-            className="tool z-20 navButton mr-10 text-white hover:bg-[#403d6a] "
-            variant="default"
-            color="white"
-          >
-            <img src={undoImage} alt="Undo" className="h-6 w-6" />
-          </Button>
-          <Button
-            onClick={redo}
-            className="tool z-20 navButton mr-10 text-white hover:bg-[#403d6a] "
-            variant="default"
-            color="white"
-          >
-            <img src={redoImage} alt="Redo" className="h-6 w-6" />
-          </Button>
-
-          {/* <div id="stroke" className="z-20 h-10 w-30 mr-10">
+          <div className="tools">
+            <Button
+              onClick={() => handleToolSelect("pen")}
+              className={`z-20 navButton mr-10 text-white hover:bg-[#403d6a]  ${
+                selectedTool === "pen" ? "active" : ""
+              }`}
+              variant="default"
+              color="white"
+            >
+              <img src={pencilImage} alt="Pencil" className="h-6 w-6" />
+            </Button>
+            <Button
+              onClick={() => handleToolSelect("eraser")}
+              className={`tool z-20 navButton mr-10 text-white hover:bg-[#403d6a] ${
+                selectedTool === "eraser" ? "active" : ""
+              }`}
+              variant="default"
+              color="white"
+            >
+              <img src={eraserImage} alt="Eraser" className="h-6 w-6" />
+            </Button>
+            <Button
+              onClick={() => handleToolSelect("textBox")}
+              className={`tool z-20 navButton mr-10 text-white hover:bg-[#403d6a]  ${
+                selectedTool === "textBox" ? "active" : ""
+              }`}
+              variant="default"
+              color="white"
+            >
+              <img src={textBoxImage} alt="Text Box" className="h-6 w-6 " />
+            </Button>
+            <Button
+              onClick={undo}
+              className="tool z-20 navButton mr-10 text-white hover:bg-[#403d6a] "
+              variant="default"
+              color="white"
+            >
+              <img src={undoImage} alt="Undo" className="h-6 w-6" />
+            </Button>
+            <Button
+              onClick={redo}
+              className="tool z-20 navButton mr-10 text-white hover:bg-[#403d6a] "
+              variant="default"
+              color="white"
+            >
+              <img src={redoImage} alt="Redo" className="h-6 w-6" />
+            </Button>
+            <input
+              id="color-picker"
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              className="tool z-20 colorPicker p-0 border-none mr-10  cursor-pointer rounded-md"
+            />
+          </div>
+          <div id="stroke" className="stroke-tool z-20 h-10 w-30 mr-10">
             <div className="slider-container">
               <span className="slider-value">{strokeWidth}px</span>
               <input
@@ -480,33 +476,8 @@ export default function Home() {
                 className="ml-2 mt-2 slider"
               />
             </div>
-          </div> */}
-
-          <input
-            id="color-picker"
-            type="color"
-            value={color}
-            onChange={(e) => setColor(e.target.value)}
-            onClick={(e) => e.stopPropagation()}
-            className="tool z-20 colorPicker p-0 border-none mr-10  cursor-pointer rounded-md"
-          />
+          </div>
         </div>
-
-        <div id="stroke" className="stroke-tool z-20 h-10 w-30 mr-10">
-            <div className="slider-container">
-              <span className="slider-value">{strokeWidth}px</span>
-              <input
-                id="slider"
-                type="range"
-                min="1"
-                max="20"
-                value={strokeWidth}
-                onChange={(e) => setStrokeWidth(Number(e.target.value))}
-                className="ml-2 mt-2 slider"
-              />
-            </div>
-          </div>
-          </div>
         <Button
           onClick={runRoute}
           className="z-20 mainButton text-white  mr-10 ml-10 hover:bg-[#403d6a]"
@@ -525,7 +496,6 @@ export default function Home() {
         onMouseUp={stopDrawing}
         onMouseOut={stopDrawing}
       />
-
       {latexExpression &&
         latexExpression.map((latex, index) => (
           <Draggable
@@ -533,7 +503,7 @@ export default function Home() {
             defaultPosition={{
               x: latexPosition.x,
               y: latexPosition.y + 30 * index,
-            }} // Offset by index
+            }}
             onStop={(e, data) => setLatexPosition({ x: data.x, y: data.y })}
           >
             <div className="absolute p-2 text-white rounded ">
@@ -544,6 +514,3 @@ export default function Home() {
     </>
   );
 }
-// function setRedoStack(arg0: (prev: any) => any[]) {
-//     throw new Error('Function not implemented.');
-// }
