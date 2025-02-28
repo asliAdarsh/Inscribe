@@ -1,5 +1,7 @@
 .tools{
     display: flex;
+    font-size: smaller;
+
 }
 
 .useful-tools{
@@ -19,6 +21,8 @@
       overflow-y: auto;
       margin-top: 50px;
       margin-left: 10px;
+      font-size: smaller;
+
     }
 
     .tool{
@@ -33,3 +37,4 @@
         width: 200px;
     }
 }
+

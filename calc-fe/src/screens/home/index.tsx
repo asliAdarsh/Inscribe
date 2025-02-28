@@ -377,6 +377,8 @@ export default function Home() {
     if (canvas) {
       const dataURL = canvas.toDataURL("image/png");
       localStorage.setItem("canvasData", dataURL);
+      localStorage.setItem("latexExpression", JSON.stringify(latexExpression));
+      localStorage.setItem("result", JSON.stringify(result));
     }
   };
 
@@ -385,6 +387,9 @@ export default function Home() {
     if (canvas) {
       const ctx = canvas.getContext("2d");
       const dataURL = localStorage.getItem("canvasData");
+      const savedLatexExpression = localStorage.getItem("latexExpression");
+      const savedResult = localStorage.getItem("result");
+
       if (dataURL && ctx) {
         const img = new Image();
         img.src = dataURL;
@@ -392,11 +397,47 @@ export default function Home() {
           ctx.drawImage(img, 0, 0);
         };
       }
+
+      if (savedLatexExpression) {
+        setLatexExpression(JSON.parse(savedLatexExpression));
+      }
+
+      if (savedResult) {
+        setResult(JSON.parse(savedResult));
+      }
     }
   };
 
+  function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>): void {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext("2d");
+          const img = new Image();
+          img.src = e.target?.result as string;
+          img.onload = () => {
+            if (ctx) {
+              const scaleFactor = 0.5; // Adjust this value to change the size of the image
+              const imgWidth = img.width * scaleFactor;
+              const imgHeight = img.height * scaleFactor;
+              const centerX = (canvas.width - imgWidth) / 2;
+              const centerY = (canvas.height - imgHeight) / 2;
+              ctx.drawImage(img, centerX, centerY, imgWidth, imgHeight);
+              saveCanvasToLocalStorage();
+            }
+          };
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
   return (
     <>
+    
       <div className="tool-container flex justify-between mt-2 ">
         <Button
           onClick={() => setReset(true)}
@@ -438,6 +479,17 @@ export default function Home() {
             >
               <img src={textBoxImage} alt="Text Box" className="h-6 w-6 " />
             </Button>
+            <label
+          className="tool z-20 text-center  navButton mr-10 text-white hover:bg-[#403d6a]"
+        >
+        Import
+          <input
+            type="file"
+            onChange={handleImageUpload}
+            className="hidden"
+          />
+          
+        </label>
             <Button
               onClick={undo}
               className="tool z-20 navButton mr-10 text-white hover:bg-[#403d6a] "
@@ -486,6 +538,8 @@ export default function Home() {
         >
           Run
         </Button>
+
+
       </div>
       <canvas
         ref={canvasRef}
