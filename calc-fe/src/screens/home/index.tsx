@@ -1,40 +1,130 @@
-import { Button } from "@/components/ui/button";
-import { useEffect, useRef, useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import "./inde.css";
 import axios from "axios";
-import Draggable from "react-draggable";
-import "@/screens/home/inde.css";
-import undoImage from "./assets/undo.png";
-import redoImage from "./assets/redo.png";
-import pencilImage from "./assets/pencil.png";
-import eraserImage from "./assets/eraser.png";
+import { jsPDF } from "jspdf";
+import pencilImg from "./assets/pencil.png";
+import eraserImg from "./assets/eraser.png";
+import undoImg from "./assets/undo.png";
+import redoImg from "./assets/redo.png";
 import textBoxImage from "./assets/textbox.png";
+import importBtn from "./assets/import.png";
+import exportBtn from "./assets/export.png";
+import helpBtn from "./assets/help.png";
+import xBtn from "./assets/x.png";
+import gitBtn from "./assets/github.png";
+import saveBtn from "./assets/save.png";
+import aiBtn from "./assets/ai.png";
+import copyBtn from "./assets/copy.png";
+import crossBtn from "./assets/cross.png";
+import sideBarBtn from "./assets/sidebar.png";
+import discrodBtn from "./assets/discord.png";
+import deleteBtn from "./assets/delete.png";
+import shapesBtn from "./assets/shapes.png";
+import linkedinBtn from "./assets/linkedin.png";
 
+// Define base structure for canvas state (without image data)
+interface CanvasMetadata {
+  id: number;
+  name: string;
+}
+
+interface SearchHistoryItem {
+  timestamp: string;
+  results: GeneratedResult[];
+}
 interface GeneratedResult {
   expression: string;
   answer: string;
+  position: { x: number; y: number };
 }
-
 interface Response {
   expr: string;
   result: string;
   assign: boolean;
 }
 
-export default function Home() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [color, setColor] = useState("rgb(255, 255, 255)");
-  const [reset, setReset] = useState(false);
+const useMobile = () => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  return isMobile;
+};
+
+export default function Home(): JSX.Element {
+  const isMobile = useMobile();
+  const [canvasesMetadata, setCanvasesMetadata] = useState<CanvasMetadata[]>(
+    []
+  );
+  const [activeCanvasId, setActiveCanvasId] = useState<number | null>(null);
+  const [drawing, setDrawing] = useState<boolean>(false);
+  const [penColor, setPenColor] = useState<string>("#ffffff");
+  const [penSize, setPenSize] = useState<number>(5);
+  const [selectedTool, setSelectedTool] = useState<
+    "pen" | "eraser" | "textBox"
+  >("pen");
+  const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
+  const canvasStates = useRef<
+    Record<number, { undoStack: ImageData[]; redoStack: ImageData[] }>
+  >({});
+  // Track which canvases have been initialized
+  const initializedCanvases = useRef<Set<number>>(new Set());
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [reset, setReset] = useState<boolean>(false);
+  const [draggedImageInfo, setDraggedImageInfo] = useState<{
+    img: HTMLImageElement | null;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
+  const [textInputPosition, setTextInputPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [textInputValue, setTextInputValue] = useState("");
+  const textInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [dictOfVars, setDictOfVars] = useState({});
   const [result, setResult] = useState<GeneratedResult[]>([]);
-  const [latexPosition, setLatexPosition] = useState({ x: 10, y: 200 });
   const [latexExpression, setLatexExpression] = useState<Array<string>>([]);
-  const [history, setHistory] = useState<ImageData[]>([]);
-  const [redoStack, setRedoStack] = useState<ImageData[]>([]);
-  const [strokeWidth, setStrokeWidth] = useState(3);
-  const [selectedTool, setSelectedTool] = useState<string>("pen");
-  const [textBoxContent, setTextBoxContent] = useState("");
-  const [textBoxVisible, setTextBoxVisible] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isResultsSidebarOpen, setIsResultsSidebarOpen] = useState(false);
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
+  const [currentResults, setCurrentResults] = useState<GeneratedResult[]>([]);
+  const [textBoxes, setTextBoxes] = useState<
+    Array<{
+      id: string;
+      text: string;
+      position: { x: number; y: number };
+      width: number;
+      height: number;
+      fontSize: number;
+      color: string;
+    }>
+  >([]);
+  const [activeTextBox, setActiveTextBox] = useState<string | null>(null);
+  const [resizing, setResizing] = useState<boolean>(false);
+  const [resizeHandle, setResizeHandle] = useState<string | null>(null);
+  const [textFormatOptions, setTextFormatOptions] = useState({
+    fontFamily: "Arial",
+    isBold: false,
+    isItalic: false,
+    isUnderlined: false,
+  });
+  const [showTextFormatDropdown, setShowTextFormatDropdown] = useState(false);
+  const [showShapesDropdown, setShowShapesDropdown] = useState(false);
+const [selectedShape, setSelectedShape] = useState<"rectangle" | "circle" | "arrow" | "line" | "triangle" | null>(null);
+const [shapeStartPosition, setShapeStartPosition] = useState<{x: number, y: number} | null>(null);
+const [isDrawingShape, setIsDrawingShape] = useState(false);
+const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     if (latexExpression.length > 0 && window.MathJax) {
@@ -47,8 +137,7 @@ export default function Home() {
   useEffect(() => {
     if (result) {
       for (const r of result) {
-        console.log("r", r);
-        renderLatexToCanvas(r.expression, r.answer);
+        renderLatexToCanvas(r.expression, r.answer, true);
       }
     }
     console.log(result);
@@ -65,11 +154,12 @@ export default function Home() {
   }, [reset]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
+    const canvas = canvasRefs.current[activeCanvasId as number];
 
     if (canvas) {
       const ctx = canvas.getContext("2d");
-      canvasRef.current.style.background = "#161718";
+      canvas.style.background = "#1F2937";
+      canvas.style.background = "#1F2937";
       if (ctx) {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight - canvas.offsetTop;
@@ -93,13 +183,22 @@ export default function Home() {
         },
       });
     };
-
-    loadCanvasFromLocalStorage();
+    if (canvas) {
+      loadCanvasFromLocalStorage(activeCanvasId as number, canvas);
+    }
 
     return () => {
       document.head.removeChild(script);
     };
   }, []);
+
+  useEffect(() => {
+    if (result.length > 0 && window.MathJax) {
+      setTimeout(() => {
+        window.MathJax.Hub.Queue(["Typeset", window.MathJax.Hub]);
+      }, 0);
+    }
+  }, [result, isResultsSidebarOpen]);
 
   const renderLatexToCanvas = (
     expression: string,
@@ -114,22 +213,25 @@ export default function Home() {
       return input.replace(/_/g, "\\_");
     };
 
+    const addSpacesBetweenWords = (input: string): string => {
+      return input.split("").join(" ");
+    };
+
     const safeExpression = ensureString(expression);
     const safeAnswer = ensureString(answer);
 
     const formattedExpression = isMath
       ? safeExpression
-      : `\\text{${escapeForLatex(safeExpression)}}`;
+      : `\\text{${escapeForLatex(addSpacesBetweenWords(safeExpression))}}`;
 
     const formattedAnswer = isMath
       ? safeAnswer
-      : `\\text{${escapeForLatex(safeAnswer)}}`;
+      : `\\text{${escapeForLatex(addSpacesBetweenWords(safeAnswer))}}`;
 
     const latex = `\\(\\LARGE{${formattedExpression} \\quad = \\quad ${formattedAnswer}}\\)`;
 
     setLatexExpression((prevLatex) => [...prevLatex, latex]);
-
-    const canvas = canvasRef.current;
+    const canvas = canvasRefs.current[activeCanvasId as number];
     if (canvas) {
       const ctx = canvas.getContext("2d");
       if (ctx) {
@@ -138,433 +240,1936 @@ export default function Home() {
     }
   };
 
-  const resetCanvas = () => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+  useEffect(() => {
+    if (window.MathJax) {
+      window.MathJax.Hub.Queue(["Typeset", window.MathJax.Hub]);
+    }
+  }, [searchHistory, isResultsSidebarOpen]);
+
+  useEffect(() => {
+    if (selectedTool === "textBox" && activeCanvasId !== null) {
+      const canvas = canvasRefs.current[activeCanvasId];
+      if (!canvas) return;
+
+      const handleCanvasClick = (e: MouseEvent) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        setTextInputPosition({ x, y });
+        setTextInputValue("");
+        setTimeout(() => textInputRef.current?.focus(), 0);
+      };
+      canvas.addEventListener("click", handleCanvasClick);
+      return () => canvas.removeEventListener("click", handleCanvasClick);
+    }
+  }, [selectedTool, activeCanvasId]);
+
+  useEffect(() => {
+    const preventZoom = (e: Event) => e.preventDefault();
+
+    // Add event listeners
+    document.addEventListener("dblclick", preventZoom, { passive: false });
+    document.addEventListener("gesturestart", preventZoom);
+    document.addEventListener("gesturechange", preventZoom);
+    document.addEventListener("gestureend", preventZoom);
+
+    return () => {
+      document.removeEventListener("dblclick", preventZoom);
+      document.removeEventListener("gesturestart", preventZoom);
+      document.removeEventListener("gesturechange", preventZoom);
+      document.removeEventListener("gestureend", preventZoom);
+    };
+  }, []);
+
+  // Load settings from localStorage on initial render
+  useEffect(() => {
+    try {
+      const savedCanvasesMetadata = localStorage.getItem("canvasesMetadata");
+      const savedPenColor = localStorage.getItem("penColor");
+      const savedPenSize = localStorage.getItem("penSize");
+      const savedSelectedTool = localStorage.getItem("selectedTool");
+      const savedActiveCanvasId = localStorage.getItem("activeCanvasId");
+
+      if (savedCanvasesMetadata) {
+        const parsedMetadata = JSON.parse(savedCanvasesMetadata);
+        setCanvasesMetadata(parsedMetadata);
+      } else {
+        createNewCanvas();
       }
+
+      if (savedPenColor) setPenColor(savedPenColor);
+      if (savedPenSize) setPenSize(Number(savedPenSize));
+      if (savedSelectedTool)
+        setSelectedTool(savedSelectedTool as "pen" | "eraser" | "textBox");
+      if (savedActiveCanvasId) setActiveCanvasId(Number(savedActiveCanvasId));
+    } catch (error) {
+      console.error("Error loading from localStorage:", error);
+      createNewCanvas();
+    }
+  }, []);
+
+  // Initialize canvasStates for each canvas
+  useEffect(() => {
+    canvasesMetadata.forEach((canvas) => {
+      if (!canvasStates.current[canvas.id]) {
+        canvasStates.current[canvas.id] = {
+          undoStack: [],
+          redoStack: [],
+        };
+      }
+    });
+
+    // If there are canvases but no active canvas, set the first one as active
+    if (canvasesMetadata.length > 0 && activeCanvasId === null) {
+      setActiveCanvasId(canvasesMetadata[0].id);
+    }
+  }, [canvasesMetadata, activeCanvasId]);
+
+  // Save settings to localStorage whenever they change
+  useEffect(() => {
+    try {
+      if (canvasesMetadata.length > 0) {
+        localStorage.setItem(
+          "canvasesMetadata",
+          JSON.stringify(canvasesMetadata)
+        );
+      }
+      localStorage.setItem("penColor", penColor);
+      localStorage.setItem("penSize", penSize.toString());
+      localStorage.setItem("selectedTool", selectedTool);
+      if (activeCanvasId !== null) {
+        localStorage.setItem("activeCanvasId", activeCanvasId.toString());
+      }
+    } catch (error) {
+      console.error("Error saving to localStorage:", error);
+      alert("Your browser storage is full. Some data might not be saved.");
+    }
+  }, [canvasesMetadata, penColor, penSize, selectedTool, activeCanvasId]);
+
+  // Initialize canvas dimensions and load saved canvases
+  useEffect(() => {
+    Object.entries(canvasRefs.current).forEach(([idStr, canvas]) => {
+      const id = Number(idStr);
+      if (canvas && !initializedCanvases.current.has(id)) {
+        // Set initial dimensions
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight - 60;
+
+        // Mark this canvas as initialized
+        initializedCanvases.current.add(id);
+
+        // Try to load canvas data from localStorage
+        loadCanvasFromLocalStorage(id, canvas);
+      }
+    });
+  }, [canvasesMetadata]);
+
+  // Autosave canvas data periodically
+  useEffect(() => {
+    const autosaveInterval = setInterval(() => {
+      // Save all initialized canvases
+      initializedCanvases.current.forEach((id) => {
+        const canvas = canvasRefs.current[id];
+        if (canvas) {
+          saveCanvasToLocalStorage(id, canvas);
+        }
+      });
+    }, 10000); // Save every 10 seconds
+
+    return () => clearInterval(autosaveInterval);
+  }, []);
+
+  // Resize canvases when window size changes
+  useEffect(() => {
+    const handleResize = () => {
+      Object.entries(canvasRefs.current).forEach(([id, canvas]) => {
+        if (canvas) {
+          // Save the current canvas state
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            const imageData = ctx.getImageData(
+              0,
+              0,
+              canvas.width,
+              canvas.height
+            );
+
+            // Resize canvas
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight - 60;
+
+            // Restore the canvas state
+            ctx.putImageData(imageData, 0, 0);
+          }
+        }
+      });
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Load history on mount
+  useEffect(() => {
+    const savedHistory = localStorage.getItem("searchHistory");
+    if (savedHistory) {
+      setSearchHistory(JSON.parse(savedHistory));
+    }
+  }, []);
+
+  // Save history on update
+  useEffect(() => {
+    localStorage.setItem("searchHistory", JSON.stringify(searchHistory));
+  }, [searchHistory]);
+
+  const saveCanvasToLocalStorage = (
+    canvasId: number,
+    canvasElement: HTMLCanvasElement
+  ): void => {
+    try {
+      const dataURL = canvasElement.toDataURL("image/png");
+      localStorage.setItem(`canvas_${canvasId}`, dataURL);
+      console.log(`Canvas ${canvasId} saved to localStorage`);
+    } catch (error) {
+      console.error(`Error saving canvas ${canvasId} to localStorage:`, error);
     }
   };
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      saveToHistory();
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.lineWidth = strokeWidth;
-        ctx.beginPath();
-        ctx.moveTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
-        setIsDrawing(true);
+  const loadCanvasFromLocalStorage = (
+    canvasId: number,
+    canvasElement: HTMLCanvasElement
+  ): void => {
+    try {
+      const dataURL = localStorage.getItem(`canvas_${canvasId}`);
+
+      if (dataURL) {
+        const ctx = canvasElement.getContext("2d");
+        if (ctx) {
+          const img = new Image();
+          img.src = dataURL;
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0);
+
+            // Initialize the state with the loaded image data
+            if (
+              canvasStates.current[canvasId] &&
+              canvasStates.current[canvasId].undoStack.length === 0
+            ) {
+              canvasStates.current[canvasId].undoStack.push(
+                ctx.getImageData(
+                  0,
+                  0,
+                  canvasElement.width,
+                  canvasElement.height
+                )
+              );
+            }
+          };
+          console.log(`Canvas ${canvasId} loaded from localStorage`);
+        }
+      } else {
+        // If no saved data, initialize with empty state
+        const ctx = canvasElement.getContext("2d");
+        if (
+          ctx &&
+          canvasStates.current[canvasId] &&
+          canvasStates.current[canvasId].undoStack.length === 0
+        ) {
+          canvasStates.current[canvasId].undoStack.push(
+            ctx.getImageData(0, 0, canvasElement.width, canvasElement.height)
+          );
+        }
       }
+    } catch (error) {
+      console.error(
+        `Error loading canvas ${canvasId} from localStorage:`,
+        error
+      );
     }
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) {
+  const createNewCanvas = (): void => {
+    const newCanvasId = Date.now();
+    const newCanvas: CanvasMetadata = {
+      id: newCanvasId,
+      name: `Canvas ${canvasesMetadata.length + 1}`,
+    };
+
+    setCanvasesMetadata((prev) => [...prev, newCanvas]);
+    setActiveCanvasId(newCanvasId);
+
+    // Initialize canvas state
+    canvasStates.current[newCanvasId] = {
+      undoStack: [],
+      redoStack: [],
+    };
+  };
+
+  //   const canvas = canvasRefs.current[activeCanvasId as number];
+
+  //   if (canvas) {
+  //     const response = await axios({
+  //       method: "post",
+  //       url: `http://localhost:8900/calculate`,
+  //       data: {
+  //         image: canvas.toDataURL("image/png"),
+  //         dict_of_vars: dictOfVars,
+  //       },
+  //     });
+
+  //     const resp = await response.data;
+  //     console.log("Response", resp);
+  //     resp.data.forEach((data: Response) => {
+  //       if (data.assign === true) {
+  //         setDictOfVars({
+  //           ...dictOfVars,
+  //           [data.expr]: data.result,
+  //         });
+  //       }
+  //     });
+
+  //     const ctx = canvas.getContext("2d");
+  //     if (!ctx) return;
+  //     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  //     let minX = canvas.width,
+  //       minY = canvas.height,
+  //       maxX = 0,
+  //       maxY = 0;
+
+  //     for (let y = 0; y < canvas.height; y++) {
+  //       for (let x = 0; x < canvas.width; x++) {
+  //         const i = (y * canvas.width + x) * 4;
+  //         if (imageData.data[i + 3] > 0) {
+  //           minX = Math.min(minX, x);
+  //           minY = Math.min(minY, y);
+  //           maxX = Math.max(maxX, x);
+  //           maxY = Math.max(maxY, y);
+  //         }
+  //       }
+  //     }
+
+  //     const centerX = (minX + maxX) / 2;
+  //     const centerY = (minY + maxY) / 2;
+
+  //     setLatexPosition({
+  //       x: centerX,
+  //       y: centerY,
+  //     });
+  //     resp.data.forEach((data: Response, index: number) => {
+  //       setTimeout(() => {
+  //         setResult((prevRes) => [
+  //           ...prevRes,
+  //           {
+  //             expression: data.expr,
+  //             answer: data.result,
+  //             position: {
+  //               x: centerX,
+  //               y: centerY + 30 * index,
+  //             },
+  //           },
+  //         ]);
+  //       }, 1000 * index);
+  //     });
+  //   }
+  //   setIsResultsSidebarOpen(true); // Open the results sidebar
+  // };
+
+  // Replace your startDrawing function with this:
+  const adjustTextPosition = (
+    e: React.MouseEvent<HTMLCanvasElement>,
+    canvasId: number
+  ) => {
+    const canvas = canvasRefs.current[canvasId];
+    if (!canvas) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Calculate available space
+    const rightSpace = rect.width - x;
+    const bottomSpace = rect.height - y;
+
+    // Minimum padding from edges
+    const padding = 20;
+
+    // Adjust position if too close to edges
+    const adjustedX = Math.min(x, rect.width - padding);
+    const adjustedY = Math.min(y, rect.height - padding);
+
+    return { x: adjustedX, y: adjustedY };
+  };
+
+  const exportCanvasesToPDF = () => {
+    // Create a new PDF document
+    const pdf = new jsPDF({
+      orientation: "landscape",
+      unit: "px",
+    });
+
+    // Get all initialized canvases
+    const canvasIds = Array.from(initializedCanvases.current);
+
+    if (canvasIds.length === 0) {
+      alert("No canvases to export!");
       return;
     }
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.lineWidth = strokeWidth;
-        ctx.strokeStyle = color;
-        ctx.lineTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
-        ctx.stroke();
+
+    // Process each canvas
+    canvasIds.forEach((id, index) => {
+      const canvas = canvasRefs.current[id];
+      if (!canvas) return;
+
+      // If not the first page, add a new page
+      if (index > 0) {
+        pdf.addPage();
       }
-    }
+
+      // Create a temporary canvas with background color
+      const tempCanvas = document.createElement("canvas");
+      const tempCtx = tempCanvas.getContext("2d");
+      if (!tempCtx) return;
+
+      // Set dimensions to match original canvas
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+
+      // Fill with background color
+      tempCtx.fillStyle = "#1F2937"; // Match your canvas background color
+      tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+      // Draw the original canvas content on top
+      tempCtx.drawImage(canvas, 0, 0);
+
+      // Get the image data from the temporary canvas
+      const imgData = tempCanvas.toDataURL("image/png");
+
+      // Calculate dimensions to fit in PDF
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const ratio = Math.min(
+        pdfWidth / imgProps.width,
+        pdfHeight / imgProps.height
+      );
+      const width = imgProps.width * ratio;
+      const height = imgProps.height * ratio;
+      const x = (pdfWidth - width) / 2;
+      const y = (pdfHeight - height) / 2;
+
+      // Add canvas image to PDF
+      pdf.addImage(imgData, "PNG", x, y, width, height);
+
+      // Add canvas name as caption
+      const canvasName =
+        canvasesMetadata.find((cm) => cm.id === id)?.name || `Canvas ${id}`;
+      pdf.setFontSize(12);
+      pdf.setTextColor(255, 255, 255); // White text for better visibility on dark background
+      pdf.text(canvasName, pdfWidth / 2, y + height + 20, { align: "center" });
+    });
+
+    // Save the PDF
+    pdf.save("inscribe-canvases.pdf");
   };
 
-  const stopDrawing = () => {
-    setIsDrawing(false);
-    saveCanvasToLocalStorage();
+  const startDrawing = (
+    e: React.MouseEvent<HTMLCanvasElement>,
+    canvasId: number
+  ): void => {
+    if (canvasId !== activeCanvasId) return;
+
+    // Prevent text tool interference
+    if (selectedTool === "textBox") {
+      const adjustedPosition = adjustTextPosition(e, canvasId);
+      if (adjustedPosition) {
+        setTextInputPosition(adjustedPosition);
+        setTextInputValue("");
+
+        // Focus the text input after a short delay to ensure it's rendered
+        setTimeout(() => {
+          if (textInputRef.current) {
+            textInputRef.current.focus();
+          }
+        }, 10);
+      }
+      return;
+    }
+
+    // Get the correct mouse position relative to the canvas
+    const canvas = canvasRefs.current[canvasId];
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Existing drag check logic
+    if (draggedImageInfo) {
+      if (
+        mouseX >= draggedImageInfo.x &&
+        mouseX <= draggedImageInfo.x + draggedImageInfo.width &&
+        mouseY >= draggedImageInfo.y &&
+        mouseY <= draggedImageInfo.y + draggedImageInfo.height
+      ) {
+        setIsDragging(true);
+        setDraggedImageInfo({
+          ...draggedImageInfo,
+          offsetX: mouseX - draggedImageInfo.x,
+          offsetY: mouseY - draggedImageInfo.y,
+        });
+        return;
+      }
+    }
+    if (selectedShape) {
+      setIsDrawingShape(true);
+      setShapeStartPosition({ x: mouseX, y: mouseY });
+      
+      // Create a temporary canvas for preview
+      const tempCanvasElement = document.createElement('canvas');
+      tempCanvasElement.width = canvas.width;
+      tempCanvasElement.height = canvas.height;
+      const tempCtx = tempCanvasElement.getContext('2d');
+      
+      if (tempCtx) {
+        // Copy current canvas to temp canvas
+        tempCtx.drawImage(canvas, 0, 0);
+      }
+      
+      setTempCanvas(tempCanvasElement);
+      return;
+    }
+    setDrawing(true);
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Set up drawing context
+    ctx.beginPath();
+    ctx.moveTo(mouseX, mouseY);
+
+    // Set drawing properties
+    ctx.lineWidth = penSize;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = selectedTool === "eraser" ? "rgba(0,0,0,1)" : penColor;
+    ctx.globalCompositeOperation =
+      selectedTool === "eraser" ? "destination-out" : "source-over";
+
+    // Save initial state
+    const state = canvasStates.current[canvasId];
+    if (state?.undoStack.length === 0) {
+      state.undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+    }
   };
 
   const runRoute = async () => {
-    const canvas = canvasRef.current;
+    try {
+      const canvas = canvasRefs.current[activeCanvasId as number];
+      if (!canvas) return;
 
-    if (canvas) {
-      const response = await axios({
-        method: "post",
-        url: `http://localhost:8900/calculate`,
-        data: {
-          image: canvas.toDataURL("image/png"),
-          dict_of_vars: dictOfVars,
-        },
+      const response = await axios.post(`http://localhost:8900/calculate`, {
+        image: canvas.toDataURL("image/png"),
+        dict_of_vars: dictOfVars,
       });
 
-      const resp = await response.data;
-      console.log("Response", resp);
+      const resp = response.data;
+      const newResults: GeneratedResult[] = [];
+
+      // Process results
       resp.data.forEach((data: Response) => {
-        if (data.assign === true) {
-          setDictOfVars({
-            ...dictOfVars,
-            [data.expr]: data.result,
-          });
+        if (data.assign) {
+          setDictOfVars((prev) => ({ ...prev, [data.expr]: data.result }));
         }
+        newResults.push({
+          expression: data.expr,
+          answer: data.result,
+          position: { x: 0, y: 0 }, // Position not needed in sidebar
+        });
       });
 
-      const ctx = canvas.getContext("2d");
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      let minX = canvas.width,
-        minY = canvas.height,
-        maxX = 0,
-        maxY = 0;
-
-      for (let y = 0; y < canvas.height; y++) {
-        for (let x = 0; x < canvas.width; x++) {
-          const i = (y * canvas.width + x) * 4;
-          if (imageData.data[i + 3] > 0) {
-            minX = Math.min(minX, x);
-            minY = Math.min(minY, y);
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
-          }
-        }
-      }
-
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
-
-      setLatexPosition({ x: centerX, y: centerY });
-      resp.data.forEach((data: Response) => {
-        setTimeout(() => {
-          const resultFromBack = {
-            expression: data.expr,
-            answer: data.result,
-          };
-          setResult((prevRes) => [...(prevRes || []), resultFromBack]);
-        }, 1000);
-      });
-    }
-  };
-
-  const useEraser = () => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.globalCompositeOperation = "destination-out";
-        ctx.lineWidth = strokeWidth;
-      }
-    }
-  };
-
-  const disableEraser = () => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.globalCompositeOperation = "source-over";
-        ctx.lineWidth = strokeWidth;
-        ctx.strokeStyle = color;
-      }
-    }
-  };
-
-  const enableTextBox = () => {
-    setTextBoxVisible(true);
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        document
-          .querySelectorAll(".text-input")
-          .forEach((input) => input.remove());
-
-        canvas.addEventListener(
-          "click",
-          (e) => {
-            const x = e.offsetX;
-            const y = e.offsetY;
-
-            const input = document.createElement("input");
-            input.type = "text";
-            input.classList.add("text-input");
-            input.style.position = "absolute";
-            input.style.left = `${x}px`;
-            input.style.top = `${y}px`;
-            input.style.background = "transparent";
-            input.style.color = color;
-            input.style.border = "none";
-            input.style.outline = "none";
-            input.style.fontSize = "20px";
-            input.style.zIndex = "1000";
-            document.body.appendChild(input);
-            input.focus();
-
-            input.addEventListener("blur", () => {
-              const canvasFontSize = "20px";
-              ctx.font = `bold ${canvasFontSize} Arial`;
-              ctx.fillStyle = color;
-              ctx.fillText(input.value, x, y);
-              document.body.removeChild(input);
-              saveCanvasToLocalStorage();
-            });
-          },
-          { once: true }
-        );
-      }
-    }
-  };
-
-  const saveToHistory = () => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        const snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        setHistory((prev) => [...prev, snapshot]);
-      }
-    }
-  };
-
-  const undo = () => {
-    if (history.length > 0) {
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          const lastState = history.pop();
-          setRedoStack((prev) => [
-            ...prev,
-            ctx.getImageData(0, 0, canvas.width, canvas.height),
-          ]);
-          if (lastState) {
-            ctx.putImageData(lastState, 0, 0);
-          }
-        }
-      }
-    }
-  };
-
-  const redo = () => {
-    if (redoStack.length > 0) {
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          const redoState = redoStack.pop();
-          setHistory((prev) => [
-            ...prev,
-            ctx.getImageData(0, 0, canvas.width, canvas.height),
-          ]);
-          if (redoState) {
-            ctx.putImageData(redoState, 0, 0);
-          }
-        }
-      }
-    }
-  };
-
-  const handleToolSelect = (tool: string) => {
-    setSelectedTool(tool);
-
-    if (tool === "pen") {
-      disableEraser();
-    } else if (tool === "eraser") {
-      useEraser();
-    } else if (tool === "textBox") {
-      enableTextBox();
-    }
-  };
-
-  const saveCanvasToLocalStorage = () => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const dataURL = canvas.toDataURL("image/png");
-      localStorage.setItem("canvasData", dataURL);
-      localStorage.setItem("latexExpression", JSON.stringify(latexExpression));
-      localStorage.setItem("result", JSON.stringify(result));
-    }
-  };
-
-  const loadCanvasFromLocalStorage = () => {
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const ctx = canvas.getContext("2d");
-      const dataURL = localStorage.getItem("canvasData");
-      const savedLatexExpression = localStorage.getItem("latexExpression");
-      const savedResult = localStorage.getItem("result");
-
-      if (dataURL && ctx) {
-        const img = new Image();
-        img.src = dataURL;
-        img.onload = () => {
-          ctx.drawImage(img, 0, 0);
-        };
-      }
-
-      if (savedLatexExpression) {
-        setLatexExpression(JSON.parse(savedLatexExpression));
-      }
-
-      if (savedResult) {
-        setResult(JSON.parse(savedResult));
-      }
-    }
-  };
-
-  function handleImageUpload(event: React.ChangeEvent<HTMLInputElement>): void {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const canvas = canvasRef.current;
-        if (canvas) {
-          const ctx = canvas.getContext("2d");
-          const img = new Image();
-          img.src = e.target?.result as string;
-          img.onload = () => {
-            if (ctx) {
-              const scaleFactor = 0.5; // Adjust this value to change the size of the image
-              const imgWidth = img.width * scaleFactor;
-              const imgHeight = img.height * scaleFactor;
-              const centerX = (canvas.width - imgWidth) / 2;
-              const centerY = (canvas.height - imgHeight) / 2;
-              ctx.drawImage(img, centerX, centerY, imgWidth, imgHeight);
-              saveCanvasToLocalStorage();
-            }
-          };
-        }
+      // Add to history
+      const historyItem: SearchHistoryItem = {
+        timestamp: new Date().toLocaleString(),
+        results: newResults,
       };
-      reader.readAsDataURL(file);
+
+      setSearchHistory((prev) => [historyItem, ...prev]);
+      setCurrentResults(newResults);
+      setIsResultsSidebarOpen(true);
+    } catch (error) {
+      console.error("API error:", error);
+      alert("Error processing request");
     }
+  };
+
+  // Replace your draw function with this:
+  const draw = (
+    e: React.MouseEvent<HTMLCanvasElement>,
+    canvasId: number
+  ): void => {
+    if (canvasId !== activeCanvasId) return;
+
+    const canvas = canvasRefs.current[canvasId];
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Handle image dragging
+    if (isDragging && draggedImageInfo) {
+      const newX = mouseX - draggedImageInfo.offsetX;
+      const newY = mouseY - draggedImageInfo.offsetY;
+
+      setDraggedImageInfo({
+        ...draggedImageInfo,
+        x: newX,
+        y: newY,
+      });
+
+      // Redraw the canvas with the image at the new position
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      // Completely clear the canvas to remove the previous image
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw the image at its new position
+      ctx.drawImage(
+        draggedImageInfo.img as HTMLImageElement,
+        newX,
+        newY,
+        draggedImageInfo.width,
+        draggedImageInfo.height
+      );
+
+      return;
+    }
+
+    if (isDrawingShape && shapeStartPosition && selectedShape) {
+      const ctx = canvas.getContext('2d');
+      if (!ctx || !tempCanvas) return;
+      
+      // Clear canvas and restore from temp canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(tempCanvas, 0, 0);
+      
+      // Set drawing style
+      ctx.strokeStyle = penColor;
+      ctx.lineWidth = penSize;
+      ctx.fillStyle = 'transparent';
+      
+      // Draw the shape based on selection
+      ctx.beginPath();
+      
+      switch (selectedShape) {
+        case 'rectangle':
+          ctx.rect(
+            shapeStartPosition.x, 
+            shapeStartPosition.y, 
+            mouseX - shapeStartPosition.x, 
+            mouseY - shapeStartPosition.y
+          );
+          break;
+          
+        case 'circle':
+          const radius = Math.sqrt(
+            Math.pow(mouseX - shapeStartPosition.x, 2) + 
+            Math.pow(mouseY - shapeStartPosition.y, 2)
+          );
+          ctx.arc(shapeStartPosition.x, shapeStartPosition.y, radius, 0, 2 * Math.PI);
+          break;
+          
+        case 'line':
+          ctx.moveTo(shapeStartPosition.x, shapeStartPosition.y);
+          ctx.lineTo(mouseX, mouseY);
+          break;
+          
+        case 'arrow':
+          // Draw the line
+          ctx.moveTo(shapeStartPosition.x, shapeStartPosition.y);
+          ctx.lineTo(mouseX, mouseY);
+          
+          // Calculate arrow head
+          const angle = Math.atan2(mouseY - shapeStartPosition.y, mouseX - shapeStartPosition.x);
+          const headLength = 15; // Length of arrow head
+          
+          // Draw the arrow head
+          ctx.lineTo(
+            mouseX - headLength * Math.cos(angle - Math.PI / 6),
+            mouseY - headLength * Math.sin(angle - Math.PI / 6)
+          );
+          ctx.moveTo(mouseX, mouseY);
+          ctx.lineTo(
+            mouseX - headLength * Math.cos(angle + Math.PI / 6),
+            mouseY - headLength * Math.sin(angle + Math.PI / 6)
+          );
+          break;
+          
+        case 'triangle':
+          ctx.moveTo(shapeStartPosition.x, shapeStartPosition.y);
+          ctx.lineTo(mouseX, mouseY);
+          ctx.lineTo(shapeStartPosition.x - (mouseX - shapeStartPosition.x), mouseY);
+          ctx.closePath();
+          break;
+      }
+      
+      ctx.stroke();
+      return;
+    }// Regular drawing if not dragging
+    if (!drawing) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Ensure our drawing settings are maintained (in case of context reset)
+    ctx.lineWidth = penSize;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = penColor;
+    ctx.globalCompositeOperation =
+      selectedTool === "pen" ? "source-over" : "destination-out";
+
+    if (selectedTool === "pen") {
+      ctx.strokeStyle = penColor;
+      ctx.globalCompositeOperation = "source-over";
+    } else {
+      ctx.strokeStyle = penColor;
+      ctx.globalCompositeOperation = "destination-out";
+    }
+
+    ctx.lineTo(mouseX, mouseY);
+    ctx.stroke();
+  };
+
+  // Replace your stopDrawing function with this:
+  const stopDrawing = (canvasId: number): void => {
+    if (canvasId !== activeCanvasId) return;
+
+    // Handle finishing image drag
+    if (isDragging && draggedImageInfo) {
+      setIsDragging(false);
+
+      
+
+      const canvas = canvasRefs.current[canvasId];
+      if (!canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      // Save the current state after dragging
+      const state = canvasStates.current[canvasId];
+      if (state) {
+        state.undoStack = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
+        state.redoStack = [];
+
+        // Save after dragging
+        saveCanvasToLocalStorage(canvasId, canvas);
+      }
+
+      return;
+    }
+    if (isDrawingShape && selectedShape) {
+      setIsDrawingShape(false);
+      setShapeStartPosition(null);
+      setTempCanvas(null);
+      
+      const canvas = canvasRefs.current[canvasId];
+      if (!canvas) return;
+  
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+  
+      // Save the current state after drawing the shape
+      const state = canvasStates.current[canvasId];
+      if (state) {
+        state.undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+        state.redoStack = [];
+  
+        // Save to localStorage after drawing is complete
+        saveCanvasToLocalStorage(canvasId, canvas);
+      }
+      
+      return;
+    }
+
+    // Regular drawing completion
+    if (!drawing) return;
+
+    setDrawing(false);
+
+    const canvas = canvasRefs.current[canvasId];
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.closePath();
+
+    // Save the current state after drawing
+    const state = canvasStates.current[canvasId];
+    if (state) {
+      state.undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+      state.redoStack = [];
+
+      // Limit stack size to prevent localStorage overflow
+      if (state.undoStack.length > 10) {
+        state.undoStack.splice(1, state.undoStack.length - 10);
+      }
+
+      // Save to localStorage after drawing is complete
+      saveCanvasToLocalStorage(canvasId, canvas);
+    }
+  };
+
+  //   const canvas = canvasRefs.current[activeCanvasId];
+  //   if (!canvas) return;
+
+  //   const ctx = canvas.getContext("2d");
+  //   if (!ctx) return;
+
+  //   // Draw text
+  //   ctx.font = `${penSize * 2}px Arial`;
+  //   ctx.fillStyle = penColor;
+  //   ctx.textBaseline = "top";
+  //   ctx.fillText(textInputValue, textInputPosition.x, textInputPosition.y);
+
+  //   // Update undo stack
+  //   const state = canvasStates.current[activeCanvasId];
+  //   if (state) {
+  //     state.undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+  //     state.redoStack = [];
+  //     saveCanvasToLocalStorage(activeCanvasId, canvas);
+  //   }
+
+  //   setTextInputPosition(null);
+  //   setTextInputValue("");
+  // };
+
+  const handleTextConfirm = () => {
+    if (!activeCanvasId || !textInputPosition || !textInputValue.trim()) return;
+
+    const canvas = canvasRefs.current[activeCanvasId];
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Apply text formatting
+    let fontStyle = "";
+    if (textFormatOptions.isBold) fontStyle += "bold ";
+    if (textFormatOptions.isItalic) fontStyle += "italic ";
+
+    // Draw text directly to canvas with formatting
+    ctx.font = `${fontStyle}${penSize * 2}px ${textFormatOptions.fontFamily}`;
+    ctx.fillStyle = penColor;
+    ctx.textBaseline = "top";
+
+    // Split text into lines and draw
+    const lines = textInputValue.split("\n");
+    const lineHeight = penSize * 2 * 1.2;
+
+    lines.forEach((line, index) => {
+      ctx.fillText(
+        line,
+        textInputPosition.x,
+        textInputPosition.y + index * lineHeight
+      );
+
+      // Add underline if selected
+      if (textFormatOptions.isUnderlined) {
+        const textWidth = ctx.measureText(line).width;
+        const underlineY =
+          textInputPosition.y + index * lineHeight + penSize * 2 * 0.9;
+
+        ctx.beginPath();
+        ctx.moveTo(textInputPosition.x, underlineY);
+        ctx.lineTo(textInputPosition.x + textWidth, underlineY);
+        ctx.lineWidth = Math.max(1, penSize / 5);
+        ctx.strokeStyle = penColor;
+        ctx.stroke();
+      }
+    });
+
+    // Update undo stack
+    const state = canvasStates.current[activeCanvasId];
+    if (state) {
+      state.undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+      state.redoStack = [];
+      saveCanvasToLocalStorage(activeCanvasId, canvas);
+    }
+
+    setTextInputPosition(null);
+    setTextInputValue("");
+    setShowTextFormatDropdown(false);
+  };
+  // Add a function to render text boxes on canvas
+  const renderTextBoxesToCanvas = (canvasId: number) => {
+    if (canvasId !== activeCanvasId) return;
+
+    const canvas = canvasRefs.current[canvasId];
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Redraw canvas from saved state first
+    // Then draw all text boxes
+    textBoxes.forEach((box) => {
+      ctx.font = `${box.fontSize}px Arial`;
+      ctx.fillStyle = box.color;
+      ctx.textBaseline = "top";
+
+      // Split text into lines and draw
+      const lines = box.text.split("\n");
+      const lineHeight = box.fontSize * 1.2;
+
+      lines.forEach((line, index) => {
+        ctx.fillText(line, box.position.x, box.position.y + index * lineHeight);
+      });
+    });
+
+    // Save canvas state after drawing all text boxes
+    const state = canvasStates.current[canvasId];
+    if (state) {
+      state.undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+      state.redoStack = [];
+      saveCanvasToLocalStorage(canvasId, canvas);
+    }
+  };
+  const undo = (): void => {
+    if (activeCanvasId === null) return;
+
+    const state = canvasStates.current[activeCanvasId];
+    if (!state || state.undoStack.length <= 1) return;
+
+    const canvas = canvasRefs.current[activeCanvasId];
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Remove the current state and add it to redo stack
+    const currentState = state.undoStack.pop();
+    if (currentState) {
+      state.redoStack.push(currentState);
+    }
+
+    // Apply the previous state
+    if (state.undoStack.length > 0) {
+      const previousState = state.undoStack[state.undoStack.length - 1];
+      ctx.putImageData(previousState, 0, 0);
+    } else {
+      // If no previous state, clear the canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Save after undo
+    saveCanvasToLocalStorage(activeCanvasId, canvas);
+  };
+
+  const redo = (): void => {
+    if (activeCanvasId === null) return;
+
+    const state = canvasStates.current[activeCanvasId];
+    if (!state || state.redoStack.length === 0) return;
+
+    const canvas = canvasRefs.current[activeCanvasId];
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Get the next state from the redo stack
+    const nextState = state.redoStack.pop();
+    if (nextState) {
+      // Add it to the undo stack and apply it
+      state.undoStack.push(nextState);
+      ctx.putImageData(nextState, 0, 0);
+
+      // Save after redo
+      saveCanvasToLocalStorage(activeCanvasId, canvas);
+    }
+  };
+
+  const resetCanvas = (): void => {
+    if (activeCanvasId === null) return;
+
+    const canvas = canvasRefs.current[activeCanvasId];
+    setResult((prev) =>
+      prev.filter(
+        (res) =>
+          !(
+            res.position.x >= 0 &&
+            res.position.x <= window.innerWidth &&
+            res.position.y >= 0 &&
+            res.position.y <= window.innerHeight
+          )
+      )
+    );
+    setLatexExpression([]);
+    setDictOfVars({});
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const state = canvasStates.current[activeCanvasId];
+    if (state) {
+      state.undoStack = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
+      state.redoStack = [];
+      saveCanvasToLocalStorage(activeCanvasId, canvas);
+    }
+  };
+
+  const resetAllCanvases = (): void => {
+    // Reset all initialized canvases
+    initializedCanvases.current.forEach((id) => {
+      const canvas = canvasRefs.current[id];
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          
+          // Reset the canvas state
+          const state = canvasStates.current[id];
+          if (state) {
+            state.undoStack = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
+            state.redoStack = [];
+            saveCanvasToLocalStorage(id, canvas);
+          }
+        }
+      }
+    });
+    // Clear results and variables
+    setResult([]);
+    setLatexExpression([]);
+    setDictOfVars({});
   }
 
+  const importImage = (): void => {
+    if (activeCanvasId === null) return;
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const file = target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event: ProgressEvent<FileReader>) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = canvasRefs.current[activeCanvasId as number];
+          if (!canvas) return;
+
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return;
+
+          // Calculate scale factor to fit within canvas while maintaining aspect ratio
+          const maxWidth = canvas.width * 0.8; // Use 80% of canvas width
+          const maxHeight = canvas.height * 0.8; // Use 80% of canvas height
+
+          let scaleFactor = 1;
+          if (img.width > maxWidth || img.height > maxHeight) {
+            const widthRatio = maxWidth / img.width;
+            const heightRatio = maxHeight / img.height;
+            scaleFactor = Math.min(widthRatio, heightRatio);
+          }
+
+          const imgWidth = img.width * scaleFactor;
+          const imgHeight = img.height * scaleFactor;
+          const centerX = (canvas.width - imgWidth) / 2;
+          const centerY = (canvas.height - imgHeight) / 2;
+
+          // Store the image info for dragging
+          setDraggedImageInfo({
+            img: img,
+            x: centerX,
+            y: centerY,
+            width: imgWidth,
+            height: imgHeight,
+            offsetX: 0,
+            offsetY: 0,
+          });
+
+          // Clear canvas and draw the image
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, centerX, centerY, imgWidth, imgHeight);
+
+          // Save this state in the undo stack
+          const state = canvasStates.current[activeCanvasId as number];
+          if (state) {
+            state.undoStack = [
+              ctx.getImageData(0, 0, canvas.width, canvas.height),
+            ];
+            state.redoStack = [];
+
+            // Save after import
+            saveCanvasToLocalStorage(activeCanvasId as number, canvas);
+          }
+        };
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  };
+
+  const saveAllCanvases = (): void => {
+    initializedCanvases.current.forEach((id) => {
+      const canvas = canvasRefs.current[id];
+      if (canvas) {
+        saveCanvasToLocalStorage(id, canvas);
+      }
+    });
+    alert("All canvases saved successfully!");
+  };
+
+  const handleToolSelect = (tool: "pen" | "eraser" | "textBox"): void => {
+    setSelectedTool(tool);
+  };
+
+  const handleCanvasSelect = (canvasId: number): void => {
+    setActiveCanvasId(canvasId);
+  };
+
+  const deleteCanvas = (canvasId: number): void => {
+    // Remove from localStorage first
+    localStorage.removeItem(`canvas_${canvasId}`);
+
+    setCanvasesMetadata((prev) =>
+      prev.filter((canvas) => canvas.id !== canvasId)
+    );
+
+    // Clean up the canvas state
+    delete canvasStates.current[canvasId];
+    initializedCanvases.current.delete(canvasId);
+
+    // If we deleted the active canvas, select another one
+    if (activeCanvasId === canvasId) {
+      const remainingCanvases = canvasesMetadata.filter(
+        (canvas) => canvas.id !== canvasId
+      );
+      if (remainingCanvases.length > 0) {
+        setActiveCanvasId(remainingCanvases[0].id);
+      } else {
+        setActiveCanvasId(null);
+        // Create a new canvas if none left
+        createNewCanvas();
+      }
+    }
+  };
+
+  function addCanvas(event: React.MouseEvent<HTMLButtonElement>): void {
+    event.stopPropagation();
+
+    // Save current canvas before creating a new one
+    if (activeCanvasId !== null) {
+      const canvas = canvasRefs.current[activeCanvasId];
+      if (canvas) {
+        saveCanvasToLocalStorage(activeCanvasId, canvas);
+      }
+    }
+
+    createNewCanvas();
+  }
+
+  // Update the resize handler to properly scale content
+  useEffect(() => {
+    const handleResize = () => {
+      Object.entries(canvasRefs.current).forEach(([id, canvas]) => {
+        if (canvas) {
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            // Create temporary canvas to preserve content
+            const tempCanvas = document.createElement("canvas");
+            const tempCtx = tempCanvas.getContext("2d");
+            if (!tempCtx) return;
+
+            // Store current dimensions and content
+            const oldWidth = canvas.width;
+            const oldHeight = canvas.height;
+            tempCanvas.width = oldWidth;
+            tempCanvas.height = oldHeight;
+            tempCtx.putImageData(
+              ctx.getImageData(0, 0, oldWidth, oldHeight),
+              0,
+              0
+            );
+
+            // Resize main canvas
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight - 60;
+
+            // Scale and redraw content
+            ctx.drawImage(
+              tempCanvas,
+              0,
+              0,
+              oldWidth,
+              oldHeight,
+              0,
+              0,
+              canvas.width,
+              canvas.height
+            );
+          }
+        }
+      });
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    // Save results to localStorage whenever they change
+    localStorage.setItem("canvasResults", JSON.stringify(result));
+  }, [result]);
+
+  useEffect(() => {
+    // Load results from localStorage on component mount
+    const savedResults = localStorage.getItem("canvasResults");
+    if (savedResults) {
+      setResult(JSON.parse(savedResults));
+    }
+  }, []);
+  // Add these event handlers to handle resizing
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (resizing && activeTextBox && resizeHandle) {
+        e.preventDefault();
+
+        setTextBoxes((prev) =>
+          prev.map((box) => {
+            if (box.id !== activeTextBox) return box;
+
+            const rect = textInputRef.current?.getBoundingClientRect();
+            if (!rect) return box;
+
+            let newWidth = box.width;
+            let newHeight = box.height;
+            let newX = box.position.x;
+            let newY = box.position.y;
+
+            // Handle resizing based on which handle is being dragged
+            if (resizeHandle.includes("e")) {
+              newWidth = Math.max(100, e.clientX - rect.left + 10);
+            }
+            if (resizeHandle.includes("w")) {
+              const diff = rect.left - e.clientX;
+              newWidth = Math.max(100, rect.width + diff);
+              newX = box.position.x - diff;
+            }
+            if (resizeHandle.includes("s")) {
+              newHeight = Math.max(30, e.clientY - rect.top + 10);
+            }
+            if (resizeHandle.includes("n")) {
+              const diff = rect.top - e.clientY;
+              newHeight = Math.max(30, rect.height + diff);
+              newY = box.position.y - diff;
+            }
+
+            return {
+              ...box,
+              width: newWidth,
+              height: newHeight,
+              position: { x: newX, y: newY },
+            };
+          })
+        );
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (resizing) {
+        setResizing(false);
+        setResizeHandle(null);
+
+        // Render text boxes to canvas after resize is complete
+        if (activeCanvasId !== null) {
+          renderTextBoxesToCanvas(activeCanvasId);
+        }
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [resizing, activeTextBox, resizeHandle, activeCanvasId]);
+
   return (
-    <>
-    
-      <div className="tool-container flex justify-between mt-2 ">
-        <Button
-          onClick={() => setReset(true)}
-          className="z-20 mainButton text-white  mr-10 ml-10 hover:bg-[#403d6a] "
-          variant="default"
-          color="red"
-        >
-          Reset
-        </Button>
-        <div className="useful-tools">
-          <div className="tools">
-            <Button
-              onClick={() => handleToolSelect("pen")}
-              className={`z-20 navButton mr-10 text-white hover:bg-[#403d6a]  ${
-                selectedTool === "pen" ? "active" : ""
-              }`}
-              variant="default"
-              color="white"
+    <div className="relative">
+      {/* Sidebar */}
+      <div
+        className={`fixed left-0 top-0 h-screen bg-gray-800 z-50 transition-all duration-300 ${
+          isSidebarOpen ? "w-64" : "w-0"
+        } overflow-x-hidden`}
+      >
+        <div className="p-4">
+          <button
+            onClick={() => setIsSidebarOpen(false)}
+            className="text-white text-2xl absolute right-4 top-4"
+          >
+            &times;
+          </button>
+          {isSidebarOpen && (
+            <span className="text-white text-xl absolute left-12 top-4 md:right-22 md:left-auto">
+              INSCRIBE
+            </span>
+          )}
+
+          <div className="mt-12 space-y-4">
+            {/* File Operations */}
+
+            <button
+              className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
+              onClick={importImage}
             >
-              <img src={pencilImage} alt="Pencil" className="h-6 w-6" />
-            </Button>
-            <Button
-              onClick={() => handleToolSelect("eraser")}
-              className={`tool z-20 navButton mr-10 text-white hover:bg-[#403d6a] ${
-                selectedTool === "eraser" ? "active" : ""
-              }`}
-              variant="default"
-              color="white"
+              <img src={importBtn} className="w-5 h-5 ml-2" />
+              <span>Import Image</span>
+            </button>
+
+            <button
+              className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
+              onClick={exportCanvasesToPDF}
             >
-              <img src={eraserImage} alt="Eraser" className="h-6 w-6" />
-            </Button>
-            <Button
-              onClick={() => handleToolSelect("textBox")}
-              className={`tool z-20 navButton mr-10 text-white hover:bg-[#403d6a]  ${
-                selectedTool === "textBox" ? "active" : ""
-              }`}
-              variant="default"
-              color="white"
+              <img src={exportBtn} className="w-5 h-5 ml-2" />
+              <span>Export as PDF</span>
+            </button>
+
+            <div className="relative group">
+            <button
+                className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
+              >
+                <img src={shapesBtn} className="w-5 h-5 ml-2" />
+                <span>Shapes</span>
+                <span className="ml-auto">▼</span>
+              </button>
+              
+             
+              <div className="absolute left-0 w-full bg-gray-800 rounded-md shadow-lg z-50 mt-1 border border-gray-700 hidden group-hover:block">                  <button 
+                    className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                    onClick={() => {
+                      setSelectedTool("pen");
+                      setSelectedShape("rectangle");
+                      setShowShapesDropdown(false);
+                    }}
+                  >
+                    <div className="w-5 h-5 ml-2 border border-gray-300 flex items-center justify-center">
+                      <div className="w-3 h-3 bg-gray-300"></div>
+                    </div>
+                    <span>Rectangle</span>
+                  </button>
+                  
+                  <button 
+                    className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                    onClick={() => {
+                      setSelectedTool("pen");
+                      setSelectedShape("circle");
+                      setShowShapesDropdown(false);
+                    }}
+                  >
+                    <div className="w-5 h-5 ml-2 border border-gray-300 rounded-full flex items-center justify-center">
+                      <div className="w-3 h-3 bg-gray-300 rounded-full"></div>
+                    </div>
+                    <span>Circle</span>
+                  </button>
+                  
+                  <button 
+                    className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                    onClick={() => {
+                      setSelectedTool("pen");
+                      setSelectedShape("line");
+                      setShowShapesDropdown(false);
+                    }}
+                  >
+                    <div className="w-5 h-5 ml-2 flex items-center justify-center">
+                      <div className="w-4 h-0.5 bg-gray-300 transform rotate-45"></div>
+                    </div>
+                    <span>Line</span>
+                  </button>
+                  
+                  <button 
+                    className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                    onClick={() => {
+                      setSelectedTool("pen");
+                      setSelectedShape("arrow");
+                      setShowShapesDropdown(false);
+                    }}
+                  >
+                    <div className="w-5 h-5 ml-2 flex items-center justify-center">
+                      <div className="w-4 h-0.5 bg-gray-300 relative">
+                        <div className="absolute right-0 top-0 w-2 h-0.5 bg-gray-300 transform rotate-45 origin-right"></div>
+                        <div className="absolute right-0 top-0 w-2 h-0.5 bg-gray-300 transform -rotate-45 origin-right"></div>
+                      </div>
+                    </div>
+                    <span>Arrow</span>
+                  </button>
+                  
+                  <button 
+                    className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                    onClick={() => {
+                      setSelectedTool("pen");
+                      setSelectedShape("triangle");
+                      setShowShapesDropdown(false);
+                    }}
+                  >
+                    <div className="w-5 h-5 ml-2 flex items-center justify-center">
+                      <div className="w-0 h-0 border-l-[4px] border-r-[4px] border-b-[6px] border-transparent border-b-gray-300"></div>
+                    </div>
+                    <span>Triangle</span>
+                  </button>
+                </div>
+              
+            </div>
+
+            <button
+              onClick={resetCanvas}
+              className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
+              title="Reset Canvas"
             >
-              <img src={textBoxImage} alt="Text Box" className="h-6 w-6 " />
-            </Button>
-            <label
-          className="tool z-20 text-center  navButton mr-10 text-white hover:bg-[#403d6a]"
-        >
-        Import
-          <input
-            type="file"
-            onChange={handleImageUpload}
-            className="hidden"
-          />
-          
-        </label>
-            <Button
-              onClick={undo}
-              className="tool z-20 navButton mr-10 text-white hover:bg-[#403d6a] "
-              variant="default"
-              color="white"
+              <img src={deleteBtn} className="w-5 h-5 ml-2" />
+              <span>Reset Canvas</span>
+            </button>
+            <button
+              onClick={resetAllCanvases}
+              className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
+              title="Reset All Canvases"
             >
-              <img src={undoImage} alt="Undo" className="h-6 w-6" />
-            </Button>
-            <Button
-              onClick={redo}
-              className="tool z-20 navButton mr-10 text-white hover:bg-[#403d6a] "
-              variant="default"
-              color="white"
+              <img src={deleteBtn} className="w-5 h-5 ml-2" />
+              <span>Reset all canvases</span>
+            </button>
+
+            {/* Help Section */}
+            <button
+              className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
+              onClick={saveAllCanvases}
             >
-              <img src={redoImage} alt="Redo" className="h-6 w-6" />
-            </Button>
-            <input
-              id="color-picker"
-              type="color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              className="tool z-20 colorPicker p-0 border-none mr-10  cursor-pointer rounded-md"
-            />
+              <img src={saveBtn} className="w-5 h-5 ml-2" />
+              <span>Save All</span>
+            </button>
+
+            <div className="border-t border-gray-600 my-2"></div>
+
+            {/* Social Section */}
+            <div className="px-2 py-1 text-gray-400 text-sm">Follow Us</div>
+
+            <a 
+            href = "https://github.com/asliAdarsh"
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
+              <img src={gitBtn} className="w-5 h-5 ml-2" />
+              <span>GitHub</span>
+            </a>
+            <a 
+              href="https://x.com/alsiAdarsh" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
+              <img src={xBtn} className="w-5 h-5 ml-2" />
+              <span>Twitter</span>
+            </a>
+            <a
+            href="" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
+              <img src={discrodBtn} className="w-5 h-5 ml-2" />
+              <span>Discord</span>
+            </a>
+            <a
+            href="https://www.linkedin.com/in/adarsh-jaiswal-935403327/" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
+              <img src={linkedinBtn} className="w-5 h-5 ml-2" />
+              <span>Linkedin</span>
+            </a>
+            <div className="border-t border-gray-600 my-2"></div>
+
+            <button className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
+              <img src={helpBtn} className="w-5 h-5 ml-2" />
+              <span>Help</span>
+            </button>
+            {isMobile && (
+              <>
+                <div className="border-t border-gray-600 my-2"></div>
+                <div className="px-2 py-1 text-gray-400 text-sm">Tools</div>
+                <button
+                  onClick={() => handleToolSelect("pen")}
+                  className={`menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded${
+                    selectedTool === "pen" ? "bg-[#403d6a]" : ""
+                  }`}
+                >
+                  <img src={pencilImg} alt="Pencil" className="w-4 h-4" />
+                  Pen
+                </button>
+                <button
+                  onClick={() => handleToolSelect("eraser")}
+                  className={`menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded${
+                    selectedTool === "eraser" ? "bg-[#403d6a]" : ""
+                  }`}
+                >
+                  <img src={eraserImg} alt="Eraser" className="w-4 h-4" />
+                  Eraser
+                </button>
+                <button
+                  onClick={() => handleToolSelect("textBox")}
+                  className={`menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded${
+                    selectedTool === "textBox" ? "bg-[#403d6a]" : ""
+                  }`}
+                >
+                  <img src={textBoxImage} alt="Text Box" className="w-4 h-4" />
+                  Text Box
+                </button>
+                <div className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
+                  <input
+                    type="color"
+                    value={penColor}
+                    onChange={(e) => setPenColor(e.target.value)}
+                    className="w-full h-8 cursor-pointer rounded-lg "
+                  />
+                </div>
+                <div className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
+                  <div className="flex items-center">
+                    <span className="text-white mr-2">Size</span>
+                    <input
+                      type="range"
+                      min="1"
+                      max="20"
+                      value={penSize}
+                      onChange={(e) => setPenSize(Number(e.target.value))}
+                      className="w-24"
+                    />
+                    <span className="text-white ml-2">{penSize}px</span>
+                  </div>
+                </div>
+                <button
+                  onClick={resetCanvas}
+                  className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
+                >
+                  Reset
+                </button>
+              </>
+            )}
           </div>
-          <div id="stroke" className="stroke-tool z-20 h-10 w-30 mr-10">
-            <div className="slider-container">
-              <span className="slider-value">{strokeWidth}px</span>
-              <input
-                id="slider"
-                type="range"
-                min="1"
-                max="20"
-                value={strokeWidth}
-                onChange={(e) => setStrokeWidth(Number(e.target.value))}
-                className="ml-2 mt-2 slider"
+        </div>
+      </div>
+      <div
+        className={`transition-all duration-300 ${
+          isSidebarOpen ? "ml-64" : "ml-0"
+        }`}
+      >
+        <div className="bg-gray-900 min-h-screen flex flex-col items-center overflow-y-auto max-h-screen pt-16 sm:pt-8 mt-8">
+          {canvasesMetadata.map((canvas) => (
+            <div
+              key={canvas.id}
+              className={`canvas bg-gray-800 border ${
+                canvas.id === activeCanvasId
+                  ? "border-blue-500 border-2"
+                  : "border-gray-700"
+              } rounded-lg w-11/12 h-full my-4 relative`}
+              style={{ minHeight: "90vh", paddingBottom: "2rem" }}
+              onClick={() => handleCanvasSelect(canvas.id)}
+            >
+              <canvas
+                ref={(el) => (canvasRefs.current[canvas.id] = el)}
+                width={window.innerWidth}
+                height={window.innerHeight - 60}
+                onMouseDown={(e) => startDrawing(e, canvas.id)}
+                onTouchStart={(e) => {
+                  e.preventDefault();
+                  // Touch event handling doesn't need rect calculation here
+                  const touch = e.touches[0];
+                  startDrawing(
+                    {
+                      clientX: touch.clientX,
+                      clientY: touch.clientY,
+                    } as unknown as React.MouseEvent<HTMLCanvasElement>,
+                    canvas.id
+                  );
+                }}
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onMouseMove={(e) => draw(e, canvas.id)}
+                onTouchMove={(e) => {
+                  e.preventDefault();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const touch = e.touches[0];
+                  draw(
+                    {
+                      clientX: touch.clientX,
+                      clientY: touch.clientY,
+                    } as unknown as React.MouseEvent<HTMLCanvasElement>,
+                    canvas.id
+                  );
+                }}
+                onMouseUp={() => stopDrawing(canvas.id)}
+                onTouchEnd={() => stopDrawing(canvas.id)}
+                onMouseOut={() => stopDrawing(canvas.id)}
+                onTouchCancel={() => stopDrawing(canvas.id)}
               />
+              {canvas.id === activeCanvasId && (
+                <>
+                  {selectedTool === "textBox" && textInputPosition && (
+                    <div
+                      className="text-box-container"
+                      style={{
+                        left: `${textInputPosition.x}px`,
+                        top: `${textInputPosition.y}px`,
+                      }}
+                    >
+                      <textarea
+                        ref={textInputRef}
+                        value={textInputValue}
+                        onChange={(e) => {
+                          setTextInputValue(e.target.value);
+                          // Auto-expand textarea
+                          e.target.style.height = "auto";
+                          e.target.style.height = `${e.target.scrollHeight}px`;
+                        }}
+                        onBlur={handleTextConfirm}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey)
+                            handleTextConfirm();
+                          if (e.key === "Escape") {
+                            setTextInputPosition(null);
+                            setTextInputValue("");
+                          }
+                        }}
+                        style={{
+                          background: "rgba(255, 255, 255, 0.1)",
+                          color: penColor,
+                          border: "2px solid #4299e1",
+                          outline: "none",
+                          fontSize: `${penSize * 2}px`,
+                          pointerEvents: "all",
+                          whiteSpace: "pre-wrap",
+                          padding: "8px",
+                          borderRadius: "4px",
+                        }}
+                        className="text-input"
+                      />
+                    </div>
+                  )}{" "}
+                </>
+              )}
+
+              <div className="absolute top-2 right-2 flex gap-2">
+                <span className="bg-gray-700 px-2 py-1 rounded text-white text-xs">
+                  {canvas.id === activeCanvasId
+                    ? "Active"
+                    : "Click to activate"}
+                </span>
+                {canvasesMetadata.length > 1 && (
+                  <button
+                    className="bg-[#403d6a] hover:bg-[#2c2a46] px-2 py-1 rounded text-white text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteCanvas(canvas.id);
+                    }}
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+              <div className="absolute bottom-2 left-2 bg-gray-700 px-2 py-1 rounded text-white text-xs">
+                {canvas.name}
+              </div>
+            </div>
+          ))}
+
+          <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
+            <button
+              onClick={addCanvas}
+              className="bg-[#403d6a] hover:bg-[#2c2a46] text-white flex items-center px-4 py-2 rounded-lg"
+            >
+              Add Canvas
+            </button>
+          </div>
+
+          {/* Modified Navbar */}
+          <div className="navbar fixed top-0 left-0 right-0 bg-gray-800 flex gap-2 p-2 z-10">
+            <button
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="openbtn p-2 text-white hover:bg-gray-700"
+            >
+              ☰
+            </button>
+
+            <span className="text-white text-xl absolute left-12 top-4 ">
+              INSCRIBE
+            </span>
+
+
+            <div className="tools flex justify-center items-center flex-1 overflow-x-auto">
+              {!isMobile && (
+                <>
+                  <button
+                    onClick={() => handleToolSelect("pen")}
+                    className={`tool p-2 rounded-md hover:bg-[#403d6a] ${
+                      selectedTool === "pen" ? "bg-[#403d6a]" : "bg-gray-700"
+                    }`}
+                    title="Pencil"
+                  >
+                    <img src={pencilImg} alt="Pencil" className="w-6 h-6" />
+                  </button>
+                  <button
+                    onClick={() => handleToolSelect("eraser")}
+                    className={`tool p-2 rounded-md hover:bg-[#403d6a] ${
+                      selectedTool === "eraser" ? "bg-[#403d6a]" : "bg-gray-700"
+                    }`}
+                    title="Eraser"
+                  >
+                    <img src={eraserImg} alt="Eraser" className="w-6 h-6" />
+                  </button>
+                  <button
+                    onClick={() => handleToolSelect("textBox")}
+                    className={`tool p-2 rounded-md hover:bg-[#403d6a] ${
+                      selectedTool === "textBox"
+                        ? "bg-[#403d6a]"
+                        : "bg-gray-700"
+                    }`}
+                    title="Text Box"
+                  >
+                    <img
+                      src={textBoxImage}
+                      alt="Text Box"
+                      className="w-6 h-6"
+                    />
+                  </button>
+                </>
+              )}
+
+              {!isMobile && (
+                <>
+                  <button
+                    onClick={undo}
+                    className="tool p-2 rounded-md bg-gray-700 hover:bg-[#403d6a]"
+                    title="Undo"
+                  >
+                    <img src={undoImg} alt="Undo" className="w-6 h-6" />
+                  </button>
+                  <button
+                    onClick={redo}
+                    className="tool p-2 rounded-md bg-gray-700 hover:bg-[#403d6a]"
+                    title="Redo"
+                  >
+                    <img src={redoImg} alt="Redo" className="w-6 h-6" />
+                  </button>
+                </>
+              )}
+
+              <div className="absolute gap-2 right-2 top-1/2 transform -translate-y-1/2 flex items-center">
+                {isMobile && (
+                  <>
+                    <button
+                      onClick={undo}
+                      className="tool p-2 rounded-md bg-gray-700 hover:bg-[#403d6a] mr-1"
+                      title="Undo"
+                    >
+                      <img src={undoImg} alt="Undo" className="w-6 h-6" />
+                    </button>
+                    <button
+                      onClick={redo}
+                      className="tool p-2 rounded-md bg-gray-700 hover:bg-[#403d6a] mr-1"
+                      title="Redo"
+                    >
+                      <img src={redoImg} alt="Redo" className="w-6 h-6" />
+                    </button>
+                  </>
+                )}
+                <button
+                  className="tool p-2  rounded-full bg-[#403d6a] hover:bg-[#2c2a46]"
+                  onClick={() => setIsResultsSidebarOpen(true)}
+                  title="AI Side Bar"
+                >
+                  <img src={sideBarBtn} className="w-6 h-6 filter invert" />
+                </button>
+                <button
+                  className="tool p-2 rounded-full bg-[#403d6a] hover:bg-[#2c2a46]"
+                  onClick={() => runRoute()}
+                  title="AI Search"
+                >
+                  <img src={aiBtn} alt="AI" className="w-6 h-6" />
+                </button>
+              </div>
+
+              {!isMobile && (
+                <>
+                  <div className="stroketool flex items-center  p-2 rounded-md">
+                    <div className="slider-container flex items-center">
+                      <span className="slider-value text-white mr-2">
+                        {penSize}px
+                      </span>
+                      <input
+                        id="slider"
+                        type="range"
+                        min="1"
+                        max="20"
+                        value={penSize}
+                        onChange={(e) => setPenSize(Number(e.target.value))}
+                        className="slider w-24"
+                        title="Size Toggler"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center  p-2 rounded-md">
+                    <input
+                      id="color-picker"
+                      className="colorPicker cursor-pointer rounded-md w-8 h-8 border-0"
+                      type="color"
+                      title="Colour Picker"
+                      value={penColor}
+                      onChange={(e) => setPenColor(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
-        <Button
-          onClick={runRoute}
-          className="z-20 mainButton text-white  mr-10 ml-10 hover:bg-[#403d6a]"
-          variant="default"
-          color="white"
-        >
-          Run
-        </Button>
-
-
       </div>
-      <canvas
-        ref={canvasRef}
-        id="canvas"
-        className="absolute top-0 left-0 w-full h-full"
-        onMouseDown={startDrawing}
-        onMouseMove={draw}
-        onMouseUp={stopDrawing}
-        onMouseOut={stopDrawing}
-      />
-      {latexExpression &&
-        latexExpression.map((latex, index) => (
-          <Draggable
-            key={index}
-            defaultPosition={{
-              x: latexPosition.x,
-              y: latexPosition.y + 30 * index,
-            }}
-            onStop={(e, data) => setLatexPosition({ x: data.x, y: data.y })}
+      {/* Results Sidebar */}
+      <div
+        className={`fixed right-0 top-0 h-screen bg-gray-800 z-50 transition-all duration-300 ${
+          isResultsSidebarOpen ? "w-96" : "w-0"
+        } overflow-x-hidden shadow-xl`}
+      >
+        <div className="p-4">
+          <button
+            onClick={() => setIsResultsSidebarOpen(false)}
+            className="text-white text-2xl absolute right-4 top-4 hover:text-gray-300"
           >
-            <div className="absolute p-2 text-white rounded ">
-              <div className="latex-content">{latex}</div>
+            &times;
+          </button>
+          {isResultsSidebarOpen && (
+            <span className="text-white text-xl absolute font-bold  top-4">
+              Search History
+            </span>
+          )}
+
+          <div className="mt-12 space-y-4">
+            <button
+              onClick={() => {
+                setSearchHistory([]);
+                localStorage.removeItem("searchHistory");
+              }}
+              className="bg-[#403d6a] hover:bg-[#2c2a46]   text-white px-4 py-2 rounded mb-4"
+            >
+              Clear History
+            </button>
+
+            <div className="overflow-y-auto h-[calc(100vh-200px)]">
+              {searchHistory.map((search, index) => (
+                <div
+                  key={index}
+                  className="bg-gray-700 p-4 rounded-lg text-white mb-4"
+                >
+                  <div className="flex justify-end gap-2 items-center mb-2">
+                    <span className="text-sm text-gray-300">
+                      {search.timestamp}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setSearchHistory((prev) =>
+                          prev.filter((_, i) => i !== index)
+                        );
+                      }}
+                      className="text-gray-400  hover:text-white"
+                    >
+                      <img src={crossBtn} alt="Cross" className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        const resultText = search.results
+                          .map(
+                            (result) =>
+                              `${result.expression
+                                .split("")
+                                .join(" ")} = ${result.answer
+                                .split("")
+                                .join(" ")}`
+                          )
+                          .join("\n");
+                        navigator.clipboard.writeText(resultText).then(
+                          () => {},
+                          (err) => {
+                            console.error("Could not copy text: ", err);
+                          }
+                        );
+                      }}
+                      className="text-gray-400 hover:text-white"
+                    >
+                      <img src={copyBtn} alt="Copy" className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {search.results.map((result, resultIndex) => {
+                    const formattedQuestion = result.expression.replace(
+                      /([a-zA-Z])([A-Z])/g,
+                      "$1 $2"
+                    );
+                    const formattedAnswer = result.answer.replace(
+                      /([a-zA-Z])([A-Z])/g,
+                      "$1 $2"
+                    );
+
+                    return (
+                      <div
+                        key={resultIndex}
+                        className="latex-result mb-4 p-4 bg-gray-800 rounded-lg border border-gray-600"
+                      >
+                        <div className="space-y-3">
+                          <div className="text-blue-400 font-medium text-sm ">
+                            Question:
+                          </div>
+                          <div
+                            className="text-gray-200 text-xs"
+                            dangerouslySetInnerHTML={{
+                              __html: `\\(\\large{\\text{${formattedQuestion}}}\\)`,
+                            }}
+                          />
+
+                          <div className="text-green-400 font-medium text-sm mt-4">
+                            Solution:
+                          </div>
+                          <div
+                            className="text-gray-200 text-sm p-2"
+                            style={{
+                              maxWidth: "100%",
+                              wordBreak: "break-word",
+                              whiteSpace: "normal",
+                              lineHeight: "1.5",
+                            }}
+                          >
+                             {formattedAnswer}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
-          </Draggable>
-        ))}
-    </>
+          </div>
+        </div>
+      </div>{" "}
+    </div>
   );
 }
