@@ -30,17 +30,19 @@ interface CanvasMetadata {
 
 interface SearchHistoryItem {
   timestamp: string;
-  results: GeneratedResult[];
+  results: GeneratedResult[]; // This now includes steps
 }
 interface GeneratedResult {
   expression: string;
   answer: string;
   position: { x: number; y: number };
+  steps?: string;
 }
 interface Response {
   expr: string;
   result: string;
   assign: boolean;
+  steps: string;
 }
 
 const useMobile = () => {
@@ -121,10 +123,15 @@ export default function Home(): JSX.Element {
   });
   const [showTextFormatDropdown, setShowTextFormatDropdown] = useState(false);
   const [showShapesDropdown, setShowShapesDropdown] = useState(false);
-const [selectedShape, setSelectedShape] = useState<"rectangle" | "circle" | "arrow" | "line" | "triangle" | null>(null);
-const [shapeStartPosition, setShapeStartPosition] = useState<{x: number, y: number} | null>(null);
-const [isDrawingShape, setIsDrawingShape] = useState(false);
-const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [selectedShape, setSelectedShape] = useState<
+    "rectangle" | "circle" | "arrow" | "line" | "triangle" | null
+  >(null);
+  const [shapeStartPosition, setShapeStartPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [isDrawingShape, setIsDrawingShape] = useState(false);
+  const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     if (latexExpression.length > 0 && window.MathJax) {
@@ -724,18 +731,18 @@ const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
     if (selectedShape) {
       setIsDrawingShape(true);
       setShapeStartPosition({ x: mouseX, y: mouseY });
-      
+
       // Create a temporary canvas for preview
-      const tempCanvasElement = document.createElement('canvas');
+      const tempCanvasElement = document.createElement("canvas");
       tempCanvasElement.width = canvas.width;
       tempCanvasElement.height = canvas.height;
-      const tempCtx = tempCanvasElement.getContext('2d');
-      
+      const tempCtx = tempCanvasElement.getContext("2d");
+
       if (tempCtx) {
         // Copy current canvas to temp canvas
         tempCtx.drawImage(canvas, 0, 0);
       }
-      
+
       setTempCanvas(tempCanvasElement);
       return;
     }
@@ -785,6 +792,7 @@ const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
           expression: data.expr,
           answer: data.result,
           position: { x: 0, y: 0 }, // Position not needed in sidebar
+          steps: data.steps || "No steps available", // Include steps from response
         });
       });
 
@@ -803,6 +811,39 @@ const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
     }
   };
 
+  // Add this component somewhere in your file, before the return statement of Home component
+  const ResultItem = ({ result }: { result: GeneratedResult }) => {
+    const [showSteps, setShowSteps] = useState(false);
+
+    return (
+      <div className="result-item">
+        <div className="result-header">
+          <div className="expression">
+            <span className="label">Expression:</span> {result.expression}
+          </div>
+          <div className="answer">
+            <span className="label">Answer:</span> {result.answer}
+          </div>
+          <button
+            className="steps-toggle-btn"
+            onClick={() => setShowSteps(!showSteps)}
+          >
+            {showSteps ? "Hide Steps" : "Show Steps"}
+          </button>
+        </div>
+
+        {showSteps && result.steps && (
+          <div className="steps-container">
+            <h4>Solution Steps:</h4>
+            <pre className="steps-content">{result.steps}</pre>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Add this component to display the results sidebar
+  // ResultsSidebar component used in JSX below
   // Replace your draw function with this:
   const draw = (
     e: React.MouseEvent<HTMLCanvasElement>,
@@ -848,53 +889,62 @@ const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
     }
 
     if (isDrawingShape && shapeStartPosition && selectedShape) {
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext("2d");
       if (!ctx || !tempCanvas) return;
-      
+
       // Clear canvas and restore from temp canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(tempCanvas, 0, 0);
-      
+
       // Set drawing style
       ctx.strokeStyle = penColor;
       ctx.lineWidth = penSize;
-      ctx.fillStyle = 'transparent';
-      
+      ctx.fillStyle = "transparent";
+
       // Draw the shape based on selection
       ctx.beginPath();
-      
+
       switch (selectedShape) {
-        case 'rectangle':
+        case "rectangle":
           ctx.rect(
-            shapeStartPosition.x, 
-            shapeStartPosition.y, 
-            mouseX - shapeStartPosition.x, 
+            shapeStartPosition.x,
+            shapeStartPosition.y,
+            mouseX - shapeStartPosition.x,
             mouseY - shapeStartPosition.y
           );
           break;
-          
-        case 'circle':
+
+        case "circle":
           const radius = Math.sqrt(
-            Math.pow(mouseX - shapeStartPosition.x, 2) + 
-            Math.pow(mouseY - shapeStartPosition.y, 2)
+            Math.pow(mouseX - shapeStartPosition.x, 2) +
+              Math.pow(mouseY - shapeStartPosition.y, 2)
           );
-          ctx.arc(shapeStartPosition.x, shapeStartPosition.y, radius, 0, 2 * Math.PI);
+          ctx.arc(
+            shapeStartPosition.x,
+            shapeStartPosition.y,
+            radius,
+            0,
+            2 * Math.PI
+          );
           break;
-          
-        case 'line':
+
+        case "line":
           ctx.moveTo(shapeStartPosition.x, shapeStartPosition.y);
           ctx.lineTo(mouseX, mouseY);
           break;
-          
-        case 'arrow':
+
+        case "arrow":
           // Draw the line
           ctx.moveTo(shapeStartPosition.x, shapeStartPosition.y);
           ctx.lineTo(mouseX, mouseY);
-          
+
           // Calculate arrow head
-          const angle = Math.atan2(mouseY - shapeStartPosition.y, mouseX - shapeStartPosition.x);
+          const angle = Math.atan2(
+            mouseY - shapeStartPosition.y,
+            mouseX - shapeStartPosition.x
+          );
           const headLength = 15; // Length of arrow head
-          
+
           // Draw the arrow head
           ctx.lineTo(
             mouseX - headLength * Math.cos(angle - Math.PI / 6),
@@ -906,18 +956,21 @@ const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
             mouseY - headLength * Math.sin(angle + Math.PI / 6)
           );
           break;
-          
-        case 'triangle':
+
+        case "triangle":
           ctx.moveTo(shapeStartPosition.x, shapeStartPosition.y);
           ctx.lineTo(mouseX, mouseY);
-          ctx.lineTo(shapeStartPosition.x - (mouseX - shapeStartPosition.x), mouseY);
+          ctx.lineTo(
+            shapeStartPosition.x - (mouseX - shapeStartPosition.x),
+            mouseY
+          );
           ctx.closePath();
           break;
       }
-      
+
       ctx.stroke();
       return;
-    }// Regular drawing if not dragging
+    } // Regular drawing if not dragging
     if (!drawing) return;
 
     const ctx = canvas.getContext("2d");
@@ -951,8 +1004,6 @@ const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
     if (isDragging && draggedImageInfo) {
       setIsDragging(false);
 
-      
-
       const canvas = canvasRefs.current[canvasId];
       if (!canvas) return;
 
@@ -975,23 +1026,25 @@ const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
       setIsDrawingShape(false);
       setShapeStartPosition(null);
       setTempCanvas(null);
-      
+
       const canvas = canvasRefs.current[canvasId];
       if (!canvas) return;
-  
+
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-  
+
       // Save the current state after drawing the shape
       const state = canvasStates.current[canvasId];
       if (state) {
-        state.undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+        state.undoStack.push(
+          ctx.getImageData(0, 0, canvas.width, canvas.height)
+        );
         state.redoStack = [];
-  
+
         // Save to localStorage after drawing is complete
         saveCanvasToLocalStorage(canvasId, canvas);
       }
-      
+
       return;
     }
 
@@ -1234,11 +1287,13 @@ const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
         const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
-          
+
           // Reset the canvas state
           const state = canvasStates.current[id];
           if (state) {
-            state.undoStack = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
+            state.undoStack = [
+              ctx.getImageData(0, 0, canvas.width, canvas.height),
+            ];
             state.redoStack = [];
             saveCanvasToLocalStorage(id, canvas);
           }
@@ -1249,7 +1304,7 @@ const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
     setResult([]);
     setLatexExpression([]);
     setDictOfVars({});
-  }
+  };
 
   const importImage = (): void => {
     if (activeCanvasId === null) return;
@@ -1380,6 +1435,83 @@ const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
 
     createNewCanvas();
   }
+
+const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
+    const [showSteps, setShowSteps] = useState(false);
+    
+    const formattedQuestion = result.expression.replace(
+      /([a-zA-Z])([A-Z])/g,
+      "$1 $2"
+    );
+    const formattedAnswer = result.answer.replace(
+      /([a-zA-Z])([A-Z])/g,
+      "$1 $2"
+    );
+    
+    return (
+      <div className="latex-result mb-4 p-4 bg-gray-800 rounded-lg border border-gray-600">
+        <div className="space-y-3">
+          <div className="text-blue-400 font-medium text-sm">
+            Question:
+          </div>
+          <div
+            className="text-gray-200 text-xs"
+            dangerouslySetInnerHTML={{
+              __html: `\\(\\large{\\text{${formattedQuestion}}}\\)`,
+            }}
+          />
+  
+          <div className="text-green-400 font-medium text-sm mt-4">
+            Solution:
+          </div>
+          <div
+            className="text-gray-200 text-sm p-2"
+            style={{
+              maxWidth: "100%",
+              wordBreak: "break-word",
+              whiteSpace: "normal",
+              lineHeight: "1.5",
+            }}
+          >
+            {formattedAnswer}
+          </div>
+  
+          {/* Add steps toggle button */}
+          {result.steps && (
+            <>
+              <button 
+                className="text-gray-300 text-sm bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded mt-2"
+                onClick={() => setShowSteps(!showSteps)}
+              >
+                {showSteps ? "Hide Steps" : "Show Steps"}
+              </button>
+              
+              {/* Show steps when toggle is on */}
+              {showSteps && (
+                <div className="mt-3">
+                  <div className="text-yellow-400 font-medium text-sm">
+                    Steps:
+                  </div>
+                  <pre
+                    className="text-gray-200 text-xs p-2 bg-gray-900 rounded border border-gray-700 mt-2 overflow-x-auto"
+                    style={{
+                      maxWidth: "100%",
+                      wordBreak: "break-word",
+                      whiteSpace: "pre-wrap",
+                      lineHeight: "1.5",
+                      fontFamily: "monospace"
+                    }}
+                  >
+                    {result.steps}
+                  </pre>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   // Update the resize handler to properly scale content
   useEffect(() => {
@@ -1550,89 +1682,83 @@ const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
             </button>
 
             <div className="relative group">
-            <button
-                className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
-              >
+              <button className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
                 <img src={shapesBtn} className="w-5 h-5 ml-2" />
                 <span>Shapes</span>
                 <span className="ml-auto">▼</span>
               </button>
-              
-             
-              <div className="absolute left-0 w-full bg-gray-800 rounded-md shadow-lg z-50 mt-1 border border-gray-700 hidden group-hover:block">                  <button 
-                    className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
-                    onClick={() => {
-                      setSelectedTool("pen");
-                      setSelectedShape("rectangle");
-                      setShowShapesDropdown(false);
-                    }}
-                  >
-                    <div className="w-5 h-5 ml-2 border border-gray-300 flex items-center justify-center">
-                      <div className="w-3 h-3 bg-gray-300"></div>
+
+              <div className="absolute left-0 w-full bg-gray-800 rounded-md shadow-lg z-50 mt-1 border border-gray-700 hidden group-hover:block">
+                {" "}
+                <button
+                  className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                  onClick={() => {
+                    setSelectedTool("pen");
+                    setSelectedShape("rectangle");
+                    setShowShapesDropdown(false);
+                  }}
+                >
+                  <div className="w-5 h-5 ml-2 border border-gray-300 flex items-center justify-center">
+                    <div className="w-3 h-3 bg-gray-300"></div>
+                  </div>
+                  <span>Rectangle</span>
+                </button>
+                <button
+                  className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                  onClick={() => {
+                    setSelectedTool("pen");
+                    setSelectedShape("circle");
+                    setShowShapesDropdown(false);
+                  }}
+                >
+                  <div className="w-5 h-5 ml-2 border border-gray-300 rounded-full flex items-center justify-center">
+                    <div className="w-3 h-3 bg-gray-300 rounded-full"></div>
+                  </div>
+                  <span>Circle</span>
+                </button>
+                <button
+                  className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                  onClick={() => {
+                    setSelectedTool("pen");
+                    setSelectedShape("line");
+                    setShowShapesDropdown(false);
+                  }}
+                >
+                  <div className="w-5 h-5 ml-2 flex items-center justify-center">
+                    <div className="w-4 h-0.5 bg-gray-300 transform rotate-45"></div>
+                  </div>
+                  <span>Line</span>
+                </button>
+                <button
+                  className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                  onClick={() => {
+                    setSelectedTool("pen");
+                    setSelectedShape("arrow");
+                    setShowShapesDropdown(false);
+                  }}
+                >
+                  <div className="w-5 h-5 ml-2 flex items-center justify-center">
+                    <div className="w-4 h-0.5 bg-gray-300 relative">
+                      <div className="absolute right-0 top-0 w-2 h-0.5 bg-gray-300 transform rotate-45 origin-right"></div>
+                      <div className="absolute right-0 top-0 w-2 h-0.5 bg-gray-300 transform -rotate-45 origin-right"></div>
                     </div>
-                    <span>Rectangle</span>
-                  </button>
-                  
-                  <button 
-                    className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
-                    onClick={() => {
-                      setSelectedTool("pen");
-                      setSelectedShape("circle");
-                      setShowShapesDropdown(false);
-                    }}
-                  >
-                    <div className="w-5 h-5 ml-2 border border-gray-300 rounded-full flex items-center justify-center">
-                      <div className="w-3 h-3 bg-gray-300 rounded-full"></div>
-                    </div>
-                    <span>Circle</span>
-                  </button>
-                  
-                  <button 
-                    className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
-                    onClick={() => {
-                      setSelectedTool("pen");
-                      setSelectedShape("line");
-                      setShowShapesDropdown(false);
-                    }}
-                  >
-                    <div className="w-5 h-5 ml-2 flex items-center justify-center">
-                      <div className="w-4 h-0.5 bg-gray-300 transform rotate-45"></div>
-                    </div>
-                    <span>Line</span>
-                  </button>
-                  
-                  <button 
-                    className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
-                    onClick={() => {
-                      setSelectedTool("pen");
-                      setSelectedShape("arrow");
-                      setShowShapesDropdown(false);
-                    }}
-                  >
-                    <div className="w-5 h-5 ml-2 flex items-center justify-center">
-                      <div className="w-4 h-0.5 bg-gray-300 relative">
-                        <div className="absolute right-0 top-0 w-2 h-0.5 bg-gray-300 transform rotate-45 origin-right"></div>
-                        <div className="absolute right-0 top-0 w-2 h-0.5 bg-gray-300 transform -rotate-45 origin-right"></div>
-                      </div>
-                    </div>
-                    <span>Arrow</span>
-                  </button>
-                  
-                  <button 
-                    className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
-                    onClick={() => {
-                      setSelectedTool("pen");
-                      setSelectedShape("triangle");
-                      setShowShapesDropdown(false);
-                    }}
-                  >
-                    <div className="w-5 h-5 ml-2 flex items-center justify-center">
-                      <div className="w-0 h-0 border-l-[4px] border-r-[4px] border-b-[6px] border-transparent border-b-gray-300"></div>
-                    </div>
-                    <span>Triangle</span>
-                  </button>
-                </div>
-              
+                  </div>
+                  <span>Arrow</span>
+                </button>
+                <button
+                  className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                  onClick={() => {
+                    setSelectedTool("pen");
+                    setSelectedShape("triangle");
+                    setShowShapesDropdown(false);
+                  }}
+                >
+                  <div className="w-5 h-5 ml-2 flex items-center justify-center">
+                    <div className="w-0 h-0 border-l-[4px] border-r-[4px] border-b-[6px] border-transparent border-b-gray-300"></div>
+                  </div>
+                  <span>Triangle</span>
+                </button>
+              </div>
             </div>
 
             <button
@@ -1666,35 +1792,39 @@ const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
             {/* Social Section */}
             <div className="px-2 py-1 text-gray-400 text-sm">Follow Us</div>
 
-            <a 
-            href = "https://github.com/asliAdarsh"
-            target="_blank" 
-            rel="noopener noreferrer" 
-            className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
+            <a
+              href="https://github.com/asliAdarsh"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
+            >
               <img src={gitBtn} className="w-5 h-5 ml-2" />
               <span>GitHub</span>
             </a>
-            <a 
-              href="https://x.com/alsiAdarsh" 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
+            <a
+              href="https://x.com/alsiAdarsh"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
+            >
               <img src={xBtn} className="w-5 h-5 ml-2" />
               <span>Twitter</span>
             </a>
             <a
-            href="" 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
+              href=""
+              target="_blank"
+              rel="noopener noreferrer"
+              className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
+            >
               <img src={discrodBtn} className="w-5 h-5 ml-2" />
               <span>Discord</span>
             </a>
             <a
-            href="https://www.linkedin.com/in/adarsh-jaiswal-935403327/" 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
+              href="https://www.linkedin.com/in/adarsh-jaiswal-935403327/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
+            >
               <img src={linkedinBtn} className="w-5 h-5 ml-2" />
               <span>Linkedin</span>
             </a>
@@ -1916,7 +2046,6 @@ const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
               INSCRIBE
             </span>
 
-
             <div className="tools flex justify-center items-center flex-1 overflow-x-auto">
               {!isMobile && (
                 <>
@@ -2120,50 +2249,9 @@ const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
                       <img src={copyBtn} alt="Copy" className="w-4 h-4" />
                     </button>
                   </div>
-                  {search.results.map((result, resultIndex) => {
-                    const formattedQuestion = result.expression.replace(
-                      /([a-zA-Z])([A-Z])/g,
-                      "$1 $2"
-                    );
-                    const formattedAnswer = result.answer.replace(
-                      /([a-zA-Z])([A-Z])/g,
-                      "$1 $2"
-                    );
-
-                    return (
-                      <div
-                        key={resultIndex}
-                        className="latex-result mb-4 p-4 bg-gray-800 rounded-lg border border-gray-600"
-                      >
-                        <div className="space-y-3">
-                          <div className="text-blue-400 font-medium text-sm ">
-                            Question:
-                          </div>
-                          <div
-                            className="text-gray-200 text-xs"
-                            dangerouslySetInnerHTML={{
-                              __html: `\\(\\large{\\text{${formattedQuestion}}}\\)`,
-                            }}
-                          />
-
-                          <div className="text-green-400 font-medium text-sm mt-4">
-                            Solution:
-                          </div>
-                          <div
-                            className="text-gray-200 text-sm p-2"
-                            style={{
-                              maxWidth: "100%",
-                              wordBreak: "break-word",
-                              whiteSpace: "normal",
-                              lineHeight: "1.5",
-                            }}
-                          >
-                             {formattedAnswer}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {search.results.map((result, resultIndex) => (
+                    <ResultItemWithSteps key={resultIndex} result={result} />
+                  ))}
                 </div>
               ))}
             </div>
