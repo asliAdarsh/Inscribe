@@ -85,3 +85,52 @@ def analyze_image(img: Image, dict_of_vars: dict):
 
     
     return answers
+
+def chat_with_ai(message: str):
+    """
+    Process a chat message using Gemini AI and return a response.
+    
+    Args:
+        message (str): The user's chat message
+        
+    Returns:
+        str: The AI's response to the message
+    """
+    try:
+        model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+        
+        prompt = (
+            f"You are a helpful AI assistant named Inscribe AI. You can answer questions on any topic, "
+            f"including but not limited to mathematics, science, history, geography, literature, and general knowledge. "
+            f"Provide accurate, concise, and helpful responses. "
+            f"User message: {message}"
+        )
+        
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        print(f"Error in chat with Gemini API: {e}")
+        return "I'm sorry, I encountered an error while processing your request."    """
+    Process a chat message using Gemini AI and return a response.
+    
+    Args:
+        message (str): The user's chat message
+        
+    Returns:
+        str: The AI's response to the message
+    """
+    try:
+        model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+        
+        prompt = (
+            f"You are an AI math assistant named Inscribe AI. You help users with mathematical problems and calculations. "
+            f"Respond to the following message in a helpful, concise manner. If the user asks about mathematical concepts, "
+            f"provide clear explanations with examples when appropriate. "
+            f"User message: {message}"
+        )
+        
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        print(f"Error in chat with Gemini API: {e}")
+        return "I'm sorry, I encountered an error while processing your request."

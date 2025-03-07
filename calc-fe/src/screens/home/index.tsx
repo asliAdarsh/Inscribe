@@ -2,11 +2,20 @@ import { useState, useRef, useEffect } from "react";
 import "./inde.css";
 import axios from "axios";
 import { jsPDF } from "jspdf";
-import * as ButtonImages from './components/button'
+import * as ButtonImages from "./components/Button/button";
+import { useNavigate } from 'react-router-dom';
+
 
 interface CanvasMetadata {
   id: number;
   name: string;
+}
+
+interface ChatMessage {
+  id: string;
+  text: string;
+  isUser: boolean;
+  timestamp: Date;
 }
 
 interface SearchHistoryItem {
@@ -113,7 +122,54 @@ export default function Home(): JSX.Element {
   } | null>(null);
   const [isDrawingShape, setIsDrawingShape] = useState(false);
   const [tempCanvas, setTempCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [showSidebarShapesDropdown, setShowSidebarShapesDropdown] =
+    useState(false);
 
+    const navigate = useNavigate();
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
+  
+    useEffect(() => {
+      // Check if user is logged in
+      const userType = localStorage.getItem('userType');
+      setIsLoggedIn(userType === 'registered' || userType === 'google');
+    }, []);
+  
+
+    const handleLaunchPage = () => {
+      // Add fade-out effect to current page
+      const mainContainer = document.getElementById('root') || document.body;
+      mainContainer.classList.add('fade-out');
+      
+      // Wait for animation to complete before navigating
+      setTimeout(() => {
+        navigate('/');
+        // Reset the class after navigation
+        setTimeout(() => {
+          mainContainer.classList.remove('fade-out');
+        }, 50);
+      }, 300);
+    };
+  
+    const handleLogout = () => {
+      // Clear user data
+      localStorage.removeItem('userType');
+      localStorage.removeItem('userEmail');
+      
+      // Add fade-out effect
+      const mainContainer = document.getElementById('root') || document.body;
+      mainContainer.classList.add('fade-out');
+      
+      // Navigate to launch page
+      setTimeout(() => {
+        navigate('/');
+        setTimeout(() => {
+          mainContainer.classList.remove('fade-out');
+        }, 50);
+      }, 300);
+    };
   useEffect(() => {
     if (latexExpression.length > 0 && window.MathJax) {
       setTimeout(() => {
@@ -736,6 +792,10 @@ export default function Home(): JSX.Element {
     ctx.beginPath();
     ctx.moveTo(mouseX, mouseY);
 
+    // Store the starting position
+     (ctx as any).lastX = mouseX;
+     (ctx as any).lastY = mouseY;
+
     // Set drawing properties
     ctx.lineWidth = penSize;
     ctx.lineCap = "round";
@@ -792,6 +852,60 @@ export default function Home(): JSX.Element {
     }
   };
 
+  const sendChatMessage = async () => {
+    if (!chatInput.trim()) return;
+
+    // Create a new user message
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      text: chatInput,
+      isUser: true,
+      timestamp: new Date(),
+    };
+
+    // Add user message to chat
+    setChatMessages((prev) => [...prev, userMessage]);
+
+    // Clear input
+    setChatInput("");
+
+    // Set loading state
+    setIsChatLoading(true);
+
+    try {
+      // Send request to backend
+      const response = await axios.post("http://localhost:8900/chat", {
+        message: userMessage.text,
+      });
+
+      // Create AI response message
+      const aiMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        text:
+          response.data.response || "Sorry, I couldn't process that request.",
+        isUser: false,
+        timestamp: new Date(),
+      };
+
+      // Add AI message to chat
+      setChatMessages((prev) => [...prev, aiMessage]);
+    } catch (error) {
+      console.error("Chat API error:", error);
+
+      // Add error message
+      const errorMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        text: "Sorry, there was an error processing your request.",
+        isUser: false,
+        timestamp: new Date(),
+      };
+
+      setChatMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsChatLoading(false);
+    }
+  };
+
   const ResultItem = ({ result }: { result: GeneratedResult }) => {
     const [showSteps, setShowSteps] = useState(false);
 
@@ -821,7 +935,6 @@ export default function Home(): JSX.Element {
       </div>
     );
   };
-
 
   const draw = (
     e: React.MouseEvent<HTMLCanvasElement>,
@@ -948,7 +1061,9 @@ export default function Home(): JSX.Element {
 
       ctx.stroke();
       return;
-    } // Regular drawing if not dragging
+    }
+
+    // Regular drawing if not dragging
     if (!drawing) return;
 
     const ctx = canvas.getContext("2d");
@@ -958,20 +1073,33 @@ export default function Home(): JSX.Element {
     ctx.lineWidth = penSize;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.strokeStyle = penColor;
-    ctx.globalCompositeOperation =
-      selectedTool === "pen" ? "source-over" : "destination-out";
 
     if (selectedTool === "pen") {
       ctx.strokeStyle = penColor;
       ctx.globalCompositeOperation = "source-over";
-    } else {
-      ctx.strokeStyle = penColor;
+    } else if (selectedTool === "eraser") {
+      ctx.strokeStyle = "rgba(0,0,0,1)"; // Use solid color for eraser
       ctx.globalCompositeOperation = "destination-out";
     }
 
+    // Begin a new path for each movement to ensure smooth drawing
+    ctx.beginPath();
+
+    // Get the previous position from the last draw call
+    // Use type assertion to access lastX property
+    const lastX = (ctx as any).lastX || mouseX;
+    const lastY =  (ctx as any).lastY || mouseY;
+
+    // Move to the last position
+    ctx.moveTo(lastX, lastY);
+
+    // Draw line to current position
     ctx.lineTo(mouseX, mouseY);
     ctx.stroke();
+
+    // Store current position for next draw call
+    (ctx as any).lastX = mouseX;
+    (ctx as any).lastY = mouseY;
   };
 
   const stopDrawing = (canvasId: number): void => {
@@ -1036,6 +1164,10 @@ export default function Home(): JSX.Element {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Reset the last position
+    delete  (ctx as any).lastX;
+    delete  (ctx as any).lastY;
+
     ctx.closePath();
 
     // Save the current state after drawing
@@ -1053,8 +1185,6 @@ export default function Home(): JSX.Element {
       saveCanvasToLocalStorage(canvasId, canvas);
     }
   };
-
-  //   const canvas = canvasRefs.current[activeCanvasId];
   //   if (!canvas) return;
 
   //   const ctx = canvas.getContext("2d");
@@ -1078,63 +1208,177 @@ export default function Home(): JSX.Element {
   //   setTextInputValue("");
   // };
 
-  const handleTextConfirm = () => {
-    if (!activeCanvasId || !textInputPosition || !textInputValue.trim()) return;
+  const handleTextConfirm = (): void => {
+    if (!textInputPosition || !textInputValue.trim()) {
+      setTextInputPosition(null);
+      setTextInputValue("");
+      return;
+    }
 
-    const canvas = canvasRefs.current[activeCanvasId];
+const canvas = activeCanvasId !== null ? canvasRefs.current[activeCanvasId] : null;
     if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Apply text formatting
-    let fontStyle = "";
-    if (textFormatOptions.isBold) fontStyle += "bold ";
-    if (textFormatOptions.isItalic) fontStyle += "italic ";
-
-    // Draw text directly to canvas with formatting
-    ctx.font = `${fontStyle}${penSize * 2}px ${textFormatOptions.fontFamily}`;
-    ctx.fillStyle = penColor;
-    ctx.textBaseline = "top";
-
-    // Split text into lines and draw
-    const lines = textInputValue.split("\n");
-    const lineHeight = penSize * 2 * 1.2;
-
-    lines.forEach((line, index) => {
-      ctx.fillText(
-        line,
-        textInputPosition.x,
-        textInputPosition.y + index * lineHeight
-      );
-
-      // Add underline if selected
-      if (textFormatOptions.isUnderlined) {
-        const textWidth = ctx.measureText(line).width;
-        const underlineY =
-          textInputPosition.y + index * lineHeight + penSize * 2 * 0.9;
-
-        ctx.beginPath();
-        ctx.moveTo(textInputPosition.x, underlineY);
-        ctx.lineTo(textInputPosition.x + textWidth, underlineY);
-        ctx.lineWidth = Math.max(1, penSize / 5);
-        ctx.strokeStyle = penColor;
-        ctx.stroke();
-      }
-    });
-
-    // Update undo stack
-    const state = canvasStates.current[activeCanvasId];
+    // Save current state before adding text
+    const state = activeCanvasId !== null ? canvasStates.current[activeCanvasId] : null;
     if (state) {
       state.undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
       state.redoStack = [];
-      saveCanvasToLocalStorage(activeCanvasId, canvas);
     }
 
+    // Get styling from the textarea
+    const textarea = textInputRef.current;
+    if (!textarea) return;
+    
+    const isBold = textarea.style.fontWeight === 'bold';
+    const isItalic = textarea.style.fontStyle === 'italic';
+    const isUnderlined = textarea.style.textDecoration === 'underline';
+    const textAlign = textarea.style.textAlign || 'left';
+    
+    // Set text properties
+    ctx.font = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : ''}${penSize * 2}px Arial`;
+    ctx.fillStyle = penColor;
+    ctx.textAlign = textAlign as CanvasTextAlign;
+    
+    // Process the text for rendering
+    const lines = textInputValue.split("\n");
+    let yOffset = textInputPosition.y;
+    const lineHeight = penSize * 2 * 1.2; // 1.2 times font size for line height
+    
+    // Calculate x position based on text alignment
+    let xPos = textInputPosition.x;
+    if (textAlign === 'center') {
+      // No adjustment needed as canvas uses the center point
+    } else if (textAlign === 'right') {
+      // No adjustment needed as canvas handles right alignment
+    }
+    
+    lines.forEach(line => {
+      // Draw the text with proper alignment
+      ctx.fillText(line, xPos, yOffset);
+      
+      // Add underline if needed
+      if (isUnderlined) {
+        const textWidth = ctx.measureText(line).width;
+        let underlineX = xPos;
+        
+        // Adjust underline position based on text alignment
+        if (textAlign === 'center') {
+          underlineX = xPos - (textWidth / 2);
+        } else if (textAlign === 'right') {
+          underlineX = xPos - textWidth;
+        }
+        
+        ctx.beginPath();
+        ctx.moveTo(underlineX, yOffset + 3);
+        ctx.lineTo(underlineX + textWidth, yOffset + 3);
+        ctx.strokeStyle = penColor;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      
+      yOffset += lineHeight;
+    });
+
+    // Save to localStorage after adding text
+if (activeCanvasId !== null) {
+  saveCanvasToLocalStorage(activeCanvasId, canvas);
+}
+
+    // Reset text input
     setTextInputPosition(null);
     setTextInputValue("");
-    setShowTextFormatDropdown(false);
   };
+
+  const parseFormattedText = (text: string) => {
+    // Create a structure to track formatting
+    const segments = [];
+
+    // Process the text character by character to handle overlapping formats
+    let currentText = "";
+    let isBold = false;
+    let isItalic = false;
+    let isUnderlined = false;
+    let i = 0;
+
+    while (i < text.length) {
+      // Check for bold marker
+      if (i + 1 < text.length && text[i] === "*" && text[i + 1] === "*") {
+        // Add current segment if there's any text
+        if (currentText) {
+          segments.push({
+            text: currentText,
+            isBold,
+            isItalic,
+            isUnderlined,
+          });
+          currentText = "";
+        }
+
+        // Toggle bold state
+        isBold = !isBold;
+        i += 2; // Skip the ** marker
+        continue;
+      }
+
+      // Check for italic marker
+      if (text[i] === "_") {
+        // Add current segment if there's any text
+        if (currentText) {
+          segments.push({
+            text: currentText,
+            isBold,
+            isItalic,
+            isUnderlined,
+          });
+          currentText = "";
+        }
+
+        // Toggle italic state
+        isItalic = !isItalic;
+        i += 1; // Skip the _ marker
+        continue;
+      }
+
+      // Check for underline marker
+      if (text[i] === "~") {
+        // Add current segment if there's any text
+        if (currentText) {
+          segments.push({
+            text: currentText,
+            isBold,
+            isItalic,
+            isUnderlined,
+          });
+          currentText = "";
+        }
+
+        // Toggle underline state
+        isUnderlined = !isUnderlined;
+        i += 1; // Skip the ~ marker
+        continue;
+      }
+
+      // Add character to current text
+      currentText += text[i];
+      i++;
+    }
+
+    // Add the final segment if there's any text left
+    if (currentText) {
+      segments.push({
+        text: currentText,
+        isBold,
+        isItalic,
+        isUnderlined,
+      });
+    }
+
+    return segments;
+  };
+
   // Add a function to render text boxes on canvas
   const renderTextBoxesToCanvas = (canvasId: number) => {
     if (canvasId !== activeCanvasId) return;
@@ -1366,6 +1610,12 @@ export default function Home(): JSX.Element {
 
   const handleToolSelect = (tool: "pen" | "eraser" | "textBox"): void => {
     setSelectedTool(tool);
+
+    // When switching to pen, keep the current shape if it exists
+    // When switching to other tools, reset the shape selection
+    if (tool !== "pen") {
+      setSelectedShape(null);
+    }
   };
 
   const handleCanvasSelect = (canvasId: number): void => {
@@ -1415,7 +1665,7 @@ export default function Home(): JSX.Element {
 
   const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
     const [showSteps, setShowSteps] = useState(false);
-    
+
     // Ensure we're working with strings before using replace
     const formattedQuestion = String(result.expression).replace(
       /([a-zA-Z])([A-Z])/g,
@@ -1425,20 +1675,18 @@ export default function Home(): JSX.Element {
       /([a-zA-Z])([A-Z])/g,
       "$1 $2"
     );
-    
+
     return (
       <div className="latex-result mb-4 p-4 bg-gray-800 rounded-lg border border-gray-600">
         <div className="space-y-3">
-          <div className="text-blue-400 font-medium text-sm">
-            Question:
-          </div>
+          <div className="text-blue-400 font-medium text-sm">Question:</div>
           <div
             className="text-gray-200 text-xs"
             dangerouslySetInnerHTML={{
               __html: `\\(\\large{\\text{${formattedQuestion}}}\\)`,
             }}
           />
-  
+
           <div className="text-green-400 font-medium text-sm mt-4">
             Solution:
           </div>
@@ -1453,17 +1701,17 @@ export default function Home(): JSX.Element {
           >
             {formattedAnswer}
           </div>
-  
+
           {/* Add steps toggle button */}
           {result.steps && (
             <>
-              <button 
+              <button
                 className="text-gray-300 text-sm bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded mt-2"
                 onClick={() => setShowSteps(!showSteps)}
               >
                 {showSteps ? "Hide Steps" : "Show Steps"}
               </button>
-              
+
               {/* Show steps when toggle is on */}
               {showSteps && (
                 <div className="mt-3">
@@ -1477,7 +1725,7 @@ export default function Home(): JSX.Element {
                       wordBreak: "break-word",
                       whiteSpace: "pre-wrap",
                       lineHeight: "1.5",
-                      fontFamily: "monospace"
+                      fontFamily: "monospace",
                     }}
                   >
                     {result.steps}
@@ -1659,94 +1907,7 @@ export default function Home(): JSX.Element {
               <span>Export as PDF</span>
             </button>
 
-            <div className="relative group">
-              <button className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
-                <img src={ButtonImages.shapesBtn} className="w-5 h-5 ml-2" />
-                <span>Shapes</span>
-                <span className="ml-auto">▼</span>
-              </button>
 
-              <div className="absolute left-0 w-full bg-gray-800 rounded-md shadow-lg z-50 mt-1 border border-gray-700 hidden group-hover:block">
-                {" "}
-                <button
-                  className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
-                  onClick={() => {
-                    setSelectedTool("pen");
-                    setSelectedShape("rectangle");
-                    setShowShapesDropdown(false);
-                  }}
-                >
-                  <div className="w-5 h-5 ml-2 border border-gray-300 flex items-center justify-center">
-                    <div className="w-3 h-3 bg-gray-300"></div>
-                  </div>
-                  <span>Rectangle</span>
-                </button>
-                <button
-                  className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
-                  onClick={() => {
-                    setSelectedTool("pen");
-                    setSelectedShape("circle");
-                    setShowShapesDropdown(false);
-                  }}
-                >
-                  <div className="w-5 h-5 ml-2 border border-gray-300 rounded-full flex items-center justify-center">
-                    <div className="w-3 h-3 bg-gray-300 rounded-full"></div>
-                  </div>
-                  <span>Circle</span>
-                </button>
-                <button
-                  className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
-                  onClick={() => {
-                    setSelectedTool("pen");
-                    setSelectedShape("line");
-                    setShowShapesDropdown(false);
-                  }}
-                >
-                  <div className="w-5 h-5 ml-2 flex items-center justify-center">
-                    <div className="w-4 h-0.5 bg-gray-300 transform rotate-45"></div>
-                  </div>
-                  <span>Line</span>
-                </button>
-                <button
-                  className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
-                  onClick={() => {
-                    setSelectedTool("pen");
-                    setSelectedShape("arrow");
-                    setShowShapesDropdown(false);
-                  }}
-                >
-                  <div className="w-5 h-5 ml-2 flex items-center justify-center">
-                    <div className="w-4 h-0.5 bg-gray-300 relative">
-                      <div className="absolute right-0 top-0 w-2 h-0.5 bg-gray-300 transform rotate-45 origin-right"></div>
-                      <div className="absolute right-0 top-0 w-2 h-0.5 bg-gray-300 transform -rotate-45 origin-right"></div>
-                    </div>
-                  </div>
-                  <span>Arrow</span>
-                </button>
-                <button
-                  className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
-                  onClick={() => {
-                    setSelectedTool("pen");
-                    setSelectedShape("triangle");
-                    setShowShapesDropdown(false);
-                  }}
-                >
-                  <div className="w-5 h-5 ml-2 flex items-center justify-center">
-                    <div className="w-0 h-0 border-l-[4px] border-r-[4px] border-b-[6px] border-transparent border-b-gray-300"></div>
-                  </div>
-                  <span>Triangle</span>
-                </button>
-              </div>
-            </div>
-
-            <button
-              onClick={resetCanvas}
-              className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
-              title="Reset Canvas"
-            >
-              <img src={ButtonImages.deleteBtn} className="w-5 h-5 ml-2" />
-              <span>Reset Canvas</span>
-            </button>
             <button
               onClick={resetAllCanvases}
               className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
@@ -1756,7 +1917,7 @@ export default function Home(): JSX.Element {
               <span>Reset all canvases</span>
             </button>
 
-            {/* Help Section */}
+            
             <button
               className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
               onClick={saveAllCanvases}
@@ -1806,8 +1967,25 @@ export default function Home(): JSX.Element {
               <img src={ButtonImages.linkedinBtn} className="w-5 h-5 ml-2" />
               <span>Linkedin</span>
             </a>
-            <div className="border-t border-gray-600 my-2"></div>
+            <div className="login-logout-container">
+            {isLoggedIn ? (
+            <button 
+            onClick={handleLogout}
+            className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
+              <img src={ButtonImages.logOutBtn} className="w-5 h-5 ml-2" />
+              <span>Log Out</span>
+            </button>
+             ) : (
+            <button 
+            onClick={handleLaunchPage}
+            className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
+              <img src={ButtonImages.logInBtn} className="w-5 h-5 ml-2" />
+              <span>Log In</span>
+            </button>
+             )}
+             </div>
 
+            <div className="border-t border-gray-600 my-2"></div>
             <button className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
               <img src={ButtonImages.helpBtn} className="w-5 h-5 ml-2" />
               <span>Help</span>
@@ -1817,12 +1995,19 @@ export default function Home(): JSX.Element {
                 <div className="border-t border-gray-600 my-2"></div>
                 <div className="px-2 py-1 text-gray-400 text-sm">Tools</div>
                 <button
-                  onClick={() => handleToolSelect("pen")}
+                  onClick={() => {
+                    handleToolSelect("pen");
+                    setSelectedShape(null); // Explicitly set to null for freehand drawing
+                  }}
                   className={`menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded${
                     selectedTool === "pen" ? "bg-[#403d6a]" : ""
                   }`}
                 >
-                  <img src={ButtonImages.pencilImg} alt="Pencil" className="w-4 h-4" />
+                  <img
+                    src={ButtonImages.pencilImg}
+                    alt="Pencil"
+                    className="w-4 h-4"
+                  />
                   Pen
                 </button>
                 <button
@@ -1831,7 +2016,11 @@ export default function Home(): JSX.Element {
                     selectedTool === "eraser" ? "bg-[#403d6a]" : ""
                   }`}
                 >
-                  <img src={ButtonImages.eraserImg} alt="Eraser" className="w-4 h-4" />
+                  <img
+                    src={ButtonImages.eraserImg}
+                    alt="Eraser"
+                    className="w-4 h-4"
+                  />
                   Eraser
                 </button>
                 <button
@@ -1840,9 +2029,101 @@ export default function Home(): JSX.Element {
                     selectedTool === "textBox" ? "bg-[#403d6a]" : ""
                   }`}
                 >
-                  <img src={ButtonImages.textBoxImage} alt="Text Box" className="w-4 h-4" />
+                  <img
+                    src={ButtonImages.textBoxImage}
+                    alt="Text Box"
+                    className="w-4 h-4"
+                  />
                   Text Box
                 </button>
+                <div className="relative">
+                  <button
+                    className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
+                    onClick={() =>
+                      setShowSidebarShapesDropdown(!showSidebarShapesDropdown)
+                    }
+                  >
+                    <img
+                      src={ButtonImages.shapesBtn}
+                      className="w-5 h-5 ml-2"
+                    />
+                    <span>Shapes</span>
+                  </button>
+
+                  {showSidebarShapesDropdown && (
+                    <div className="absolute left-0 w-full bg-gray-800 rounded-md shadow-lg z-[100] mt-1 border border-gray-700">
+                      <button
+                        className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                        onClick={() => {
+                          setSelectedTool("pen");
+                          setSelectedShape("rectangle");
+                          setShowSidebarShapesDropdown(false);
+                        }}
+                      >
+                        <div className="w-5 h-5  border border-gray-300 flex items-center justify-center">
+                          <div className="w-3 h-3 bg-gray-300"></div>
+                        </div>
+                        <span>Rectangle</span>
+                      </button>
+                      <button
+                        className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                        onClick={() => {
+                          setSelectedTool("pen");
+                          setSelectedShape("circle");
+                          setShowSidebarShapesDropdown(false);
+                        }}
+                      >
+                        <div className="w-5 h-5 ml-2 border border-gray-300 rounded-full flex items-center justify-center">
+                          <div className="w-3 h-3 bg-gray-300 rounded-full"></div>
+                        </div>
+                        <span>Circle</span>
+                      </button>
+                      <button
+                        className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                        onClick={() => {
+                          setSelectedTool("pen");
+                          setSelectedShape("line");
+                          setShowSidebarShapesDropdown(false);
+                        }}
+                      >
+                        <div className="w-5 h-5 ml-2 flex items-center justify-center">
+                          <div className="w-4 h-0.5 bg-gray-300 transform rotate-45"></div>
+                        </div>
+                        <span>Line</span>
+                      </button>
+                      <button
+                        className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                        onClick={() => {
+                          setSelectedTool("pen");
+                          setSelectedShape("arrow");
+                          setShowShapesDropdown(false);
+                        }}
+                      >
+                        <div className="w-5 h-5 ml-2 flex items-center justify-center">
+                          <div className="w-4 h-0.5 bg-gray-300 relative">
+                            <div className="absolute right-0 top-0 w-2 h-0.5 bg-gray-300 transform rotate-45 origin-right"></div>
+                            <div className="absolute right-0 top-0 w-2 h-0.5 bg-gray-300 transform -rotate-45 origin-right"></div>
+                          </div>
+                        </div>
+                        <span>Arrow</span>
+                      </button>
+                      <button
+                        className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                        onClick={() => {
+                          setSelectedTool("pen");
+                          setSelectedShape("triangle");
+                          setShowShapesDropdown(false);
+                        }}
+                      >
+                        <div className="w-5 h-5 ml-2 flex items-center justify-center">
+                          <div className="w-0 h-0 border-l-[4px] border-r-[4px] border-b-[6px] border-transparent border-b-gray-300"></div>
+                        </div>
+                        <span>Triangle</span>
+                      </button>
+                      {/* Other shape buttons */}
+                    </div>
+                  )}
+                </div>
                 <div className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
                   <input
                     type="color"
@@ -1942,6 +2223,94 @@ export default function Home(): JSX.Element {
                         top: `${textInputPosition.y}px`,
                       }}
                     >
+                      <div
+                        className="text-editing-toolbar bg-gray-800 p-1 mb-1 rounded flex gap-1"
+                        onMouseDown={(e) => e.preventDefault()} // Prevent blur when clicking toolbar
+                      >
+                        <button
+                          className="p-1 hover:bg-gray-700 rounded"
+                          onMouseDown={(e) => {
+                            e.preventDefault(); // Prevent blur
+                            const textarea = textInputRef.current;
+                            if (!textarea) return;
+
+                            // Instead of adding ** symbols, apply styling directly to the textarea
+                            const start = textarea.selectionStart;
+                            const end = textarea.selectionEnd;
+
+                            // Apply bold styling to the selected text
+                            if (textarea.style.fontWeight === "bold") {
+                              textarea.style.fontWeight = "normal";
+                            } else {
+                              textarea.style.fontWeight = "bold";
+                            }
+
+                            // Maintain selection
+                            setTimeout(() => {
+                              textarea.focus();
+                              textarea.setSelectionRange(start, end);
+                            }, 10);
+                          }}
+                          title="Bold"
+                        >
+                          <span className="font-bold text-white">B</span>
+                        </button>
+                        <button
+                          className="p-1 hover:bg-gray-700 rounded"
+                          onMouseDown={(e) => {
+                            e.preventDefault(); // Prevent blur
+                            const textarea = textInputRef.current;
+                            if (!textarea) return;
+
+                            // Apply italic styling directly
+                            const start = textarea.selectionStart;
+                            const end = textarea.selectionEnd;
+
+                            if (textarea.style.fontStyle === "italic") {
+                              textarea.style.fontStyle = "normal";
+                            } else {
+                              textarea.style.fontStyle = "italic";
+                            }
+
+                            // Maintain selection
+                            setTimeout(() => {
+                              textarea.focus();
+                              textarea.setSelectionRange(start, end);
+                            }, 10);
+                          }}
+                          title="Italic"
+                        >
+                          <span className="italic text-white">I</span>
+                        </button>
+                        <button
+                          className="p-1 hover:bg-gray-700 rounded"
+                          onMouseDown={(e) => {
+                            e.preventDefault(); // Prevent blur
+                            const textarea = textInputRef.current;
+                            if (!textarea) return;
+
+                            // Apply underline styling directly
+                            const start = textarea.selectionStart;
+                            const end = textarea.selectionEnd;
+
+                            if (textarea.style.textDecoration === "underline") {
+                              textarea.style.textDecoration = "none";
+                            } else {
+                              textarea.style.textDecoration = "underline";
+                            }
+
+                            // Maintain selection
+                            setTimeout(() => {
+                              textarea.focus();
+                              textarea.setSelectionRange(start, end);
+                            }, 10);
+                          }}
+                          title="Underline"
+                        >
+                          <span className="underline text-white">U</span>
+                        </button>
+                        
+                      </div>
                       <textarea
                         ref={textInputRef}
                         value={textInputValue}
@@ -1998,7 +2367,16 @@ export default function Home(): JSX.Element {
               </div>
               <div className="absolute bottom-2 left-2 bg-gray-700 px-2 py-1 rounded text-white text-xs">
                 {canvas.name}
+
               </div>
+              <div className="absolute bottom-0 right-2  px-2 py-1 rounded text-sm">
+              <button
+                  onClick={resetCanvas}
+                  className=" flex items-center gap-2 w-full p-2 bg-[#403d6a] text-gray-300 hover:bg-[#2c2a46] rounded"
+                >
+                  Reset
+                </button>
+                </div>
             </div>
           ))}
 
@@ -2011,7 +2389,7 @@ export default function Home(): JSX.Element {
             </button>
           </div>
 
-          {/* Modified Navbar */}
+          {/*  Navbar */}
           <div className="navbar fixed top-0 left-0 right-0 bg-gray-800 flex gap-2 p-2 z-10">
             <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -2024,17 +2402,26 @@ export default function Home(): JSX.Element {
               INSCRIBE
             </span>
 
-            <div className="tools flex justify-center items-center flex-1 overflow-x-auto">
+            <div className="tools flex justify-center items-center flex-1 overflow-x-auto gap-1 bg-gray-800 ">
               {!isMobile && (
                 <>
                   <button
-                    onClick={() => handleToolSelect("pen")}
+                    onClick={() => {
+                      handleToolSelect("pen");
+                      setSelectedShape(null); // Explicitly set to null for freehand drawing
+                    }}
                     className={`tool p-2 rounded-md hover:bg-[#403d6a] ${
-                      selectedTool === "pen" ? "bg-[#403d6a]" : "bg-gray-700"
+                      selectedTool === "pen" && !selectedShape
+                        ? "bg-[#403d6a]"
+                        : "bg-gray-700"
                     }`}
                     title="Pencil"
                   >
-                    <img src={ButtonImages.pencilImg} alt="Pencil" className="w-6 h-6" />
+                    <img
+                      src={ButtonImages.pencilImg}
+                      alt="Pencil"
+                      className="w-5 h-5"
+                    />
                   </button>
                   <button
                     onClick={() => handleToolSelect("eraser")}
@@ -2043,7 +2430,11 @@ export default function Home(): JSX.Element {
                     }`}
                     title="Eraser"
                   >
-                    <img src={ButtonImages.eraserImg} alt="Eraser" className="w-6 h-6" />
+                    <img
+                      src={ButtonImages.eraserImg}
+                      alt="Eraser"
+                      className="w-5 h-5"
+                    />
                   </button>
                   <button
                     onClick={() => handleToolSelect("textBox")}
@@ -2057,9 +2448,107 @@ export default function Home(): JSX.Element {
                     <img
                       src={ButtonImages.textBoxImage}
                       alt="Text Box"
-                      className="w-6 h-6"
+                      className="w-5 h-5"
                     />
                   </button>
+                  <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowShapesDropdown(!showShapesDropdown);
+                      }}
+                      className={`tool p-2 rounded-md hover:bg-[#403d6a] ${
+                        selectedShape ? "bg-[#403d6a]" : "bg-gray-700"
+                      }`}
+                      title="Shapes"
+                    >
+                      <img
+                        src={ButtonImages.shapesBtn}
+                        alt="Shapes"
+                        className="w-5 h-5"
+                        title="Shapes"
+                      />
+                    </button>
+                    {showShapesDropdown && (
+                      <div
+                        className="fixed mt-1 bg-gray-800 rounded-md shadow-lg z-[9999] border border-gray-700 w-40"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          top: "50px", // Position below the navbar
+                          left: "calc(50% - 100px)", // Center horizontally
+                        }}
+                      >
+                        <button
+                          className="flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                          onClick={() => {
+                            setSelectedTool("pen");
+                            setSelectedShape("rectangle");
+                            setShowShapesDropdown(false);
+                          }}
+                        >
+                          <div className="w-5 h-5 border border-gray-300 flex items-center justify-center">
+                            <div className="w-3 h-3 bg-gray-300"></div>
+                          </div>
+                          <span>Rectangle</span>
+                        </button>
+                        <button
+                          className=" flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                          onClick={() => {
+                            setSelectedTool("pen");
+                            setSelectedShape("circle");
+                            setShowShapesDropdown(false);
+                          }}
+                        >
+                          <div className="w-5 h-5  border border-gray-300 rounded-full flex items-center justify-center">
+                            <div className="w-3 h-3 bg-gray-300 rounded-full"></div>
+                          </div>
+                          <span>Circle</span>
+                        </button>
+                        <button
+                          className=" flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                          onClick={() => {
+                            setSelectedTool("pen");
+                            setSelectedShape("line");
+                            setShowShapesDropdown(false);
+                          }}
+                        >
+                          <div className="w-5 h-5  flex items-center justify-center">
+                            <div className="w-4 h-0.5 bg-gray-300 transform rotate-45"></div>
+                          </div>
+                          <span>Line</span>
+                        </button>
+                        <button
+                          className=" flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                          onClick={() => {
+                            setSelectedTool("pen");
+                            setSelectedShape("arrow");
+                            setShowShapesDropdown(false);
+                          }}
+                        >
+                          <div className="w-5 h-5  flex items-center justify-center">
+                            <div className="w-4 h-0.5 bg-gray-300 relative">
+                              <div className="absolute right-0 top-0 w-2 h-0.5 bg-gray-300 transform rotate-45 origin-right"></div>
+                              <div className="absolute right-0 top-0 w-2 h-0.5 bg-gray-300 transform -rotate-45 origin-right"></div>
+                            </div>
+                          </div>
+                          <span>Arrow</span>
+                        </button>
+                        <button
+                          className=" flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                          onClick={() => {
+                            setSelectedTool("pen");
+                            setSelectedShape("triangle");
+                            setShowShapesDropdown(false);
+                          }}
+                        >
+                          <div className="w-5 h-5  flex items-center justify-center">
+                            <div className="w-0 h-0 border-l-[4px] border-r-[4px] border-b-[6px] border-transparent border-b-gray-300"></div>
+                          </div>
+                          <span>Triangle</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
 
@@ -2070,14 +2559,22 @@ export default function Home(): JSX.Element {
                     className="tool p-2 rounded-md bg-gray-700 hover:bg-[#403d6a]"
                     title="Undo"
                   >
-                    <img src={ButtonImages.undoImg} alt="Undo" className="w-6 h-6" />
+                    <img
+                      src={ButtonImages.undoImg}
+                      alt="Undo"
+                      className="w-5 h-5"
+                    />
                   </button>
                   <button
                     onClick={redo}
                     className="tool p-2 rounded-md bg-gray-700 hover:bg-[#403d6a]"
                     title="Redo"
                   >
-                    <img src={ButtonImages.redoImg} alt="Redo" className="w-6 h-6" />
+                    <img
+                      src={ButtonImages.redoImg}
+                      alt="Redo"
+                      className="w-5 h-5"
+                    />
                   </button>
                 </>
               )}
@@ -2090,30 +2587,42 @@ export default function Home(): JSX.Element {
                       className="tool p-2 rounded-md bg-gray-700 hover:bg-[#403d6a] mr-1"
                       title="Undo"
                     >
-                      <img src={ButtonImages.undoImg} alt="Undo" className="w-6 h-6" />
+                      <img
+                        src={ButtonImages.undoImg}
+                        alt="Undo"
+                        className="w-5 h-5"
+                      />
                     </button>
                     <button
                       onClick={redo}
                       className="tool p-2 rounded-md bg-gray-700 hover:bg-[#403d6a] mr-1"
                       title="Redo"
                     >
-                      <img src={ButtonImages.redoImg} alt="Redo" className="w-6 h-6" />
+                      <img
+                        src={ButtonImages.redoImg}
+                        alt="Redo"
+                        className="w-5 h-5"
+                      />
                     </button>
                   </>
                 )}
-                <button
-                  className="tool p-2  rounded-full bg-[#403d6a] hover:bg-[#2c2a46]"
-                  onClick={() => setIsResultsSidebarOpen(true)}
-                  title="AI Side Bar"
-                >
-                  <img src={ButtonImages.sideBarBtn} className="w-6 h-6 filter invert" />
-                </button>
+
                 <button
                   className="tool p-2 rounded-full bg-[#403d6a] hover:bg-[#2c2a46]"
                   onClick={() => runRoute()}
                   title="AI Search"
                 >
-                  <img src={ButtonImages.aiBtn} alt="AI" className="w-6 h-6" />
+                  <img src={ButtonImages.aiBtn} alt="AI" className="w-5 h-5" />
+                </button>
+                <button
+                  className="tool p-2  rounded-full bg-[#403d6a] hover:bg-[#2c2a46]"
+                  onClick={() => setIsResultsSidebarOpen(true)}
+                  title="AI Side Bar"
+                >
+                  <img
+                    src={ButtonImages.sideBarBtn}
+                    className="w-5 h-5 filter invert"
+                  />
                 </button>
               </div>
 
@@ -2168,7 +2677,7 @@ export default function Home(): JSX.Element {
           </button>
           {isResultsSidebarOpen && (
             <span className="text-white text-xl absolute font-bold  top-4">
-              Search History
+              Canvas Search
             </span>
           )}
 
@@ -2201,7 +2710,11 @@ export default function Home(): JSX.Element {
                       }}
                       className="text-gray-400  hover:text-white"
                     >
-                      <img src={ButtonImages.crossBtn} alt="Cross" className="w-4 h-4" />
+                      <img
+                        src={ButtonImages.crossBtn}
+                        alt="Cross"
+                        className="w-4 h-4"
+                      />
                     </button>
                     <button
                       onClick={() => {
@@ -2224,7 +2737,11 @@ export default function Home(): JSX.Element {
                       }}
                       className="text-gray-400 hover:text-white"
                     >
-                      <img src={ButtonImages.copyBtn} alt="Copy" className="w-4 h-4" />
+                      <img
+                        src={ButtonImages.copyBtn}
+                        alt="Copy"
+                        className="w-4 h-4"
+                      />
                     </button>
                   </div>
                   {search.results.map((result, resultIndex) => (
@@ -2233,6 +2750,97 @@ export default function Home(): JSX.Element {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-600 my-2"></div>
+
+        {/* AI Chat Box */}
+        <div className="px-2 py-1 text-gray-400 text-sm">AI Assistant</div>
+
+        <div className="chat-container flex flex-col h-64 mt-2">
+          {/* Chat Messages */}
+          <div className="chat-messages flex-1 overflow-y-auto p-2 bg-gray-900 rounded border border-gray-700 mb-2">
+            {chatMessages.length === 0 ? (
+              <div className="text-gray-500 text-center text-sm py-2">
+                Ask me anything !
+              </div>
+            ) : (
+              chatMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`mb-2 p-2 rounded max-w-[90%] ${
+                    msg.isUser
+                      ? "bg-blue-800 text-white ml-auto"
+                      : "bg-gray-800 text-gray-200"
+                  }`}
+                >
+                  <div className="text-sm">{msg.text}</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {msg.timestamp.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </div>
+                </div>
+              ))
+            )}
+            {isChatLoading && (
+              <div className="bg-gray-800 text-gray-200 p-2 rounded max-w-[90%] mb-2">
+                <div className="flex items-center space-x-1">
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                  <div
+                    className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "0.2s" }}
+                  ></div>
+                  <div
+                    className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                    style={{ animationDelay: "0.4s" }}
+                  ></div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Chat Input */}
+          <div className="chat-input flex">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendChatMessage();
+                }
+              }}
+              placeholder="Ask a question..."
+              className="flex-1 bg-gray-700 text-white px-3 py-2 rounded-l outline-none text-sm"
+            />
+            <button
+              onClick={sendChatMessage}
+              disabled={isChatLoading || !chatInput.trim()}
+              className={`px-3 py-2 rounded-r ${
+                isChatLoading || !chatInput.trim()
+                  ? "bg-gray-600 text-gray-400 cursor-not-allowed"
+                  : "bg-blue-600 text-white hover:bg-blue-700"
+              }`}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                />
+              </svg>
+            </button>
           </div>
         </div>
       </div>{" "}

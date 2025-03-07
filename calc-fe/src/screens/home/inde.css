@@ -445,6 +445,15 @@ html, body {
   margin-bottom: 10px;
 }
 
-/* Existing ResultItem styles should work with this */
+/* Page transition effects */
+.fade-out {
+  opacity: 0;
+  transition: opacity 300ms ease-out;
+}
+
+#root {
+  opacity: 1;
+  transition: opacity 300ms ease-in;
+}
 
 

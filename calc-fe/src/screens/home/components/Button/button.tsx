@@ -3,7 +3,7 @@ import eraserImg from "./assets/eraser.png";
 import undoImg from "./assets/undo.png";
 import redoImg from "./assets/redo.png";
 import textBoxImage from "./assets/textbox.png";
-import importBtn from "./assets/import.png";
+import importBtn from "./assets/addImg.png";
 import exportBtn from "./assets/export.png";
 import helpBtn from "./assets/help.png";
 import xBtn from "./assets/x.png";
@@ -17,6 +17,12 @@ import discrodBtn from "./assets/discord.png";
 import deleteBtn from "./assets/delete.png";
 import shapesBtn from "./assets/shapes.png";
 import linkedinBtn from "./assets/linkedin.png";
+import logInBtn from "./assets/login.png";
+import logOutBtn from "./assets/logout.png";
+import facebookBtn from "./assets/facebook.png";
+import gitImg from "./assets/githubImg.png";
+import googleImg from "./assets/google.png";
+
 
 export  {
   pencilImg,
@@ -37,5 +43,10 @@ export  {
   discrodBtn,
   deleteBtn,
   shapesBtn,
-  linkedinBtn
+  linkedinBtn,
+  logInBtn,
+  logOutBtn,
+  facebookBtn,
+  gitImg,
+  googleImg
 };
