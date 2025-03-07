@@ -2,27 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import "./inde.css";
 import axios from "axios";
 import { jsPDF } from "jspdf";
-import pencilImg from "./assets/pencil.png";
-import eraserImg from "./assets/eraser.png";
-import undoImg from "./assets/undo.png";
-import redoImg from "./assets/redo.png";
-import textBoxImage from "./assets/textbox.png";
-import importBtn from "./assets/import.png";
-import exportBtn from "./assets/export.png";
-import helpBtn from "./assets/help.png";
-import xBtn from "./assets/x.png";
-import gitBtn from "./assets/github.png";
-import saveBtn from "./assets/save.png";
-import aiBtn from "./assets/ai.png";
-import copyBtn from "./assets/copy.png";
-import crossBtn from "./assets/cross.png";
-import sideBarBtn from "./assets/sidebar.png";
-import discrodBtn from "./assets/discord.png";
-import deleteBtn from "./assets/delete.png";
-import shapesBtn from "./assets/shapes.png";
-import linkedinBtn from "./assets/linkedin.png";
+import * as ButtonImages from './components/button'
 
-// Define base structure for canvas state (without image data)
 interface CanvasMetadata {
   id: number;
   name: string;
@@ -811,7 +792,6 @@ export default function Home(): JSX.Element {
     }
   };
 
-  // Add this component somewhere in your file, before the return statement of Home component
   const ResultItem = ({ result }: { result: GeneratedResult }) => {
     const [showSteps, setShowSteps] = useState(false);
 
@@ -842,9 +822,7 @@ export default function Home(): JSX.Element {
     );
   };
 
-  // Add this component to display the results sidebar
-  // ResultsSidebar component used in JSX below
-  // Replace your draw function with this:
+
   const draw = (
     e: React.MouseEvent<HTMLCanvasElement>,
     canvasId: number
@@ -996,7 +974,6 @@ export default function Home(): JSX.Element {
     ctx.stroke();
   };
 
-  // Replace your stopDrawing function with this:
   const stopDrawing = (canvasId: number): void => {
     if (canvasId !== activeCanvasId) return;
 
@@ -1436,14 +1413,15 @@ export default function Home(): JSX.Element {
     createNewCanvas();
   }
 
-const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
+  const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
     const [showSteps, setShowSteps] = useState(false);
     
-    const formattedQuestion = result.expression.replace(
+    // Ensure we're working with strings before using replace
+    const formattedQuestion = String(result.expression).replace(
       /([a-zA-Z])([A-Z])/g,
       "$1 $2"
     );
-    const formattedAnswer = result.answer.replace(
+    const formattedAnswer = String(result.answer).replace(
       /([a-zA-Z])([A-Z])/g,
       "$1 $2"
     );
@@ -1669,7 +1647,7 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
               className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
               onClick={importImage}
             >
-              <img src={importBtn} className="w-5 h-5 ml-2" />
+              <img src={ButtonImages.importBtn} className="w-5 h-5 ml-2" />
               <span>Import Image</span>
             </button>
 
@@ -1677,13 +1655,13 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
               className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
               onClick={exportCanvasesToPDF}
             >
-              <img src={exportBtn} className="w-5 h-5 ml-2" />
+              <img src={ButtonImages.exportBtn} className="w-5 h-5 ml-2" />
               <span>Export as PDF</span>
             </button>
 
             <div className="relative group">
               <button className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
-                <img src={shapesBtn} className="w-5 h-5 ml-2" />
+                <img src={ButtonImages.shapesBtn} className="w-5 h-5 ml-2" />
                 <span>Shapes</span>
                 <span className="ml-auto">▼</span>
               </button>
@@ -1766,7 +1744,7 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
               className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
               title="Reset Canvas"
             >
-              <img src={deleteBtn} className="w-5 h-5 ml-2" />
+              <img src={ButtonImages.deleteBtn} className="w-5 h-5 ml-2" />
               <span>Reset Canvas</span>
             </button>
             <button
@@ -1774,7 +1752,7 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
               className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
               title="Reset All Canvases"
             >
-              <img src={deleteBtn} className="w-5 h-5 ml-2" />
+              <img src={ButtonImages.deleteBtn} className="w-5 h-5 ml-2" />
               <span>Reset all canvases</span>
             </button>
 
@@ -1783,7 +1761,7 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
               className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
               onClick={saveAllCanvases}
             >
-              <img src={saveBtn} className="w-5 h-5 ml-2" />
+              <img src={ButtonImages.saveBtn} className="w-5 h-5 ml-2" />
               <span>Save All</span>
             </button>
 
@@ -1798,7 +1776,7 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
               rel="noopener noreferrer"
               className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
             >
-              <img src={gitBtn} className="w-5 h-5 ml-2" />
+              <img src={ButtonImages.gitBtn} className="w-5 h-5 ml-2" />
               <span>GitHub</span>
             </a>
             <a
@@ -1807,7 +1785,7 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
               rel="noopener noreferrer"
               className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
             >
-              <img src={xBtn} className="w-5 h-5 ml-2" />
+              <img src={ButtonImages.xBtn} className="w-5 h-5 ml-2" />
               <span>Twitter</span>
             </a>
             <a
@@ -1816,7 +1794,7 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
               rel="noopener noreferrer"
               className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
             >
-              <img src={discrodBtn} className="w-5 h-5 ml-2" />
+              <img src={ButtonImages.discrodBtn} className="w-5 h-5 ml-2" />
               <span>Discord</span>
             </a>
             <a
@@ -1825,13 +1803,13 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
               rel="noopener noreferrer"
               className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
             >
-              <img src={linkedinBtn} className="w-5 h-5 ml-2" />
+              <img src={ButtonImages.linkedinBtn} className="w-5 h-5 ml-2" />
               <span>Linkedin</span>
             </a>
             <div className="border-t border-gray-600 my-2"></div>
 
             <button className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
-              <img src={helpBtn} className="w-5 h-5 ml-2" />
+              <img src={ButtonImages.helpBtn} className="w-5 h-5 ml-2" />
               <span>Help</span>
             </button>
             {isMobile && (
@@ -1844,7 +1822,7 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
                     selectedTool === "pen" ? "bg-[#403d6a]" : ""
                   }`}
                 >
-                  <img src={pencilImg} alt="Pencil" className="w-4 h-4" />
+                  <img src={ButtonImages.pencilImg} alt="Pencil" className="w-4 h-4" />
                   Pen
                 </button>
                 <button
@@ -1853,7 +1831,7 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
                     selectedTool === "eraser" ? "bg-[#403d6a]" : ""
                   }`}
                 >
-                  <img src={eraserImg} alt="Eraser" className="w-4 h-4" />
+                  <img src={ButtonImages.eraserImg} alt="Eraser" className="w-4 h-4" />
                   Eraser
                 </button>
                 <button
@@ -1862,7 +1840,7 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
                     selectedTool === "textBox" ? "bg-[#403d6a]" : ""
                   }`}
                 >
-                  <img src={textBoxImage} alt="Text Box" className="w-4 h-4" />
+                  <img src={ButtonImages.textBoxImage} alt="Text Box" className="w-4 h-4" />
                   Text Box
                 </button>
                 <div className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
@@ -2056,7 +2034,7 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
                     }`}
                     title="Pencil"
                   >
-                    <img src={pencilImg} alt="Pencil" className="w-6 h-6" />
+                    <img src={ButtonImages.pencilImg} alt="Pencil" className="w-6 h-6" />
                   </button>
                   <button
                     onClick={() => handleToolSelect("eraser")}
@@ -2065,7 +2043,7 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
                     }`}
                     title="Eraser"
                   >
-                    <img src={eraserImg} alt="Eraser" className="w-6 h-6" />
+                    <img src={ButtonImages.eraserImg} alt="Eraser" className="w-6 h-6" />
                   </button>
                   <button
                     onClick={() => handleToolSelect("textBox")}
@@ -2077,7 +2055,7 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
                     title="Text Box"
                   >
                     <img
-                      src={textBoxImage}
+                      src={ButtonImages.textBoxImage}
                       alt="Text Box"
                       className="w-6 h-6"
                     />
@@ -2092,14 +2070,14 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
                     className="tool p-2 rounded-md bg-gray-700 hover:bg-[#403d6a]"
                     title="Undo"
                   >
-                    <img src={undoImg} alt="Undo" className="w-6 h-6" />
+                    <img src={ButtonImages.undoImg} alt="Undo" className="w-6 h-6" />
                   </button>
                   <button
                     onClick={redo}
                     className="tool p-2 rounded-md bg-gray-700 hover:bg-[#403d6a]"
                     title="Redo"
                   >
-                    <img src={redoImg} alt="Redo" className="w-6 h-6" />
+                    <img src={ButtonImages.redoImg} alt="Redo" className="w-6 h-6" />
                   </button>
                 </>
               )}
@@ -2112,14 +2090,14 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
                       className="tool p-2 rounded-md bg-gray-700 hover:bg-[#403d6a] mr-1"
                       title="Undo"
                     >
-                      <img src={undoImg} alt="Undo" className="w-6 h-6" />
+                      <img src={ButtonImages.undoImg} alt="Undo" className="w-6 h-6" />
                     </button>
                     <button
                       onClick={redo}
                       className="tool p-2 rounded-md bg-gray-700 hover:bg-[#403d6a] mr-1"
                       title="Redo"
                     >
-                      <img src={redoImg} alt="Redo" className="w-6 h-6" />
+                      <img src={ButtonImages.redoImg} alt="Redo" className="w-6 h-6" />
                     </button>
                   </>
                 )}
@@ -2128,14 +2106,14 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
                   onClick={() => setIsResultsSidebarOpen(true)}
                   title="AI Side Bar"
                 >
-                  <img src={sideBarBtn} className="w-6 h-6 filter invert" />
+                  <img src={ButtonImages.sideBarBtn} className="w-6 h-6 filter invert" />
                 </button>
                 <button
                   className="tool p-2 rounded-full bg-[#403d6a] hover:bg-[#2c2a46]"
                   onClick={() => runRoute()}
                   title="AI Search"
                 >
-                  <img src={aiBtn} alt="AI" className="w-6 h-6" />
+                  <img src={ButtonImages.aiBtn} alt="AI" className="w-6 h-6" />
                 </button>
               </div>
 
@@ -2223,7 +2201,7 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
                       }}
                       className="text-gray-400  hover:text-white"
                     >
-                      <img src={crossBtn} alt="Cross" className="w-4 h-4" />
+                      <img src={ButtonImages.crossBtn} alt="Cross" className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => {
@@ -2246,7 +2224,7 @@ const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
                       }}
                       className="text-gray-400 hover:text-white"
                     >
-                      <img src={copyBtn} alt="Copy" className="w-4 h-4" />
+                      <img src={ButtonImages.copyBtn} alt="Copy" className="w-4 h-4" />
                     </button>
                   </div>
                   {search.results.map((result, resultIndex) => (
