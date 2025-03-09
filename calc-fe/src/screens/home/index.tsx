@@ -3,8 +3,7 @@ import "./inde.css";
 import axios from "axios";
 import { jsPDF } from "jspdf";
 import * as ButtonImages from "./components/Button/button";
-import { useNavigate } from 'react-router-dom';
-
+import { useNavigate } from "react-router-dom";
 
 interface CanvasMetadata {
   id: number;
@@ -105,13 +104,6 @@ export default function Home(): JSX.Element {
   const [activeTextBox, setActiveTextBox] = useState<string | null>(null);
   const [resizing, setResizing] = useState<boolean>(false);
   const [resizeHandle, setResizeHandle] = useState<string | null>(null);
-  const [textFormatOptions, setTextFormatOptions] = useState({
-    fontFamily: "Arial",
-    isBold: false,
-    isItalic: false,
-    isUnderlined: false,
-  });
-  const [showTextFormatDropdown, setShowTextFormatDropdown] = useState(false);
   const [showShapesDropdown, setShowShapesDropdown] = useState(false);
   const [selectedShape, setSelectedShape] = useState<
     "rectangle" | "circle" | "arrow" | "line" | "triangle" | null
@@ -128,48 +120,62 @@ export default function Home(): JSX.Element {
   const [showSidebarShapesDropdown, setShowSidebarShapesDropdown] =
     useState(false);
 
-    const navigate = useNavigate();
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
-  
-    useEffect(() => {
-      // Check if user is logged in
-      const userType = localStorage.getItem('userType');
-      setIsLoggedIn(userType === 'registered' || userType === 'google');
-    }, []);
-  
+  const navigate = useNavigate();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-    const handleLaunchPage = () => {
-      // Add fade-out effect to current page
-      const mainContainer = document.getElementById('root') || document.body;
-      mainContainer.classList.add('fade-out');
-      
-      // Wait for animation to complete before navigating
+  useEffect(() => {
+    // Check if user is logged in
+    const userType = localStorage.getItem("userType");
+    setIsLoggedIn(userType === "registered" || userType === "google");
+  }, []);
+
+  const handleLaunchPage = () => {
+    // Add fade-out effect to current page
+    const mainContainer = document.getElementById("root") || document.body;
+    mainContainer.classList.add("fade-out");
+
+    // Wait for animation to complete before navigating
+    setTimeout(() => {
+      navigate("/");
+      // Reset the class after navigation
       setTimeout(() => {
-        navigate('/');
-        // Reset the class after navigation
-        setTimeout(() => {
-          mainContainer.classList.remove('fade-out');
-        }, 50);
-      }, 300);
-    };
-  
-    const handleLogout = () => {
-      // Clear user data
-      localStorage.removeItem('userType');
-      localStorage.removeItem('userEmail');
-      
-      // Add fade-out effect
-      const mainContainer = document.getElementById('root') || document.body;
-      mainContainer.classList.add('fade-out');
-      
-      // Navigate to launch page
+        mainContainer.classList.remove("fade-out");
+      }, 50);
+    }, 300);
+  };
+
+  const handleLogout = () => {
+    // Clear user data
+    localStorage.removeItem("userType");
+    localStorage.removeItem("userEmail");
+
+    // Add fade-out effect
+    const mainContainer = document.getElementById("root") || document.body;
+    mainContainer.classList.add("fade-out");
+
+    // Navigate to launch page
+    setTimeout(() => {
+      navigate("/");
       setTimeout(() => {
-        navigate('/');
-        setTimeout(() => {
-          mainContainer.classList.remove('fade-out');
-        }, 50);
-      }, 300);
-    };
+        mainContainer.classList.remove("fade-out");
+      }, 50);
+    }, 300);
+  };
+  // const handleDashboard = () => {
+
+  //   // Add fade-out effect
+  //   const mainContainer = document.getElementById('root') || document.body;
+  //   mainContainer.classList.add('fade-out');
+
+  //   // Navigate to launch page
+  //   setTimeout(() => {
+  //     navigate('/dashboard');
+  //     setTimeout(() => {
+  //       mainContainer.classList.remove('fade-out');
+  //     }, 50);
+  //   }, 300);
+  // };
+
   useEffect(() => {
     if (latexExpression.length > 0 && window.MathJax) {
       setTimeout(() => {
@@ -714,7 +720,7 @@ export default function Home(): JSX.Element {
     });
 
     // Save the PDF
-    pdf.save("inscribe-canvases.pdf");
+    pdf.save("inscribe-workspace.pdf");
   };
 
   const startDrawing = (
@@ -745,8 +751,10 @@ export default function Home(): JSX.Element {
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const mouseX = (e.clientX - rect.left) * scaleX;
+    const mouseY = (e.clientY - rect.top) * scaleY;
 
     // Existing drag check logic
     if (draggedImageInfo) {
@@ -793,8 +801,8 @@ export default function Home(): JSX.Element {
     ctx.moveTo(mouseX, mouseY);
 
     // Store the starting position
-     (ctx as any).lastX = mouseX;
-     (ctx as any).lastY = mouseY;
+    (ctx as any).lastX = mouseX;
+    (ctx as any).lastY = mouseY;
 
     // Set drawing properties
     ctx.lineWidth = penSize;
@@ -946,8 +954,12 @@ export default function Home(): JSX.Element {
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    const scaleX = canvas.width / rect.width; // Relationship between CSS width and canvas width
+    const scaleY = canvas.height / rect.height; // Relationship between CSS height and canvas height
+
+    // Calculate the exact position with scaling factors
+    const mouseX = (e.clientX - rect.left) * scaleX;
+    const mouseY = (e.clientY - rect.top) * scaleY;
 
     // Handle image dragging
     if (isDragging && draggedImageInfo) {
@@ -1078,22 +1090,26 @@ export default function Home(): JSX.Element {
       ctx.strokeStyle = penColor;
       ctx.globalCompositeOperation = "source-over";
     } else if (selectedTool === "eraser") {
-      ctx.strokeStyle = "rgba(0,0,0,1)"; // Use solid color for eraser
+      ctx.strokeStyle = "rgba(0,0,0,1)";
       ctx.globalCompositeOperation = "destination-out";
     }
 
     // Begin a new path for each movement to ensure smooth drawing
-    ctx.beginPath();
 
     // Get the previous position from the last draw call
     // Use type assertion to access lastX property
     const lastX = (ctx as any).lastX || mouseX;
-    const lastY =  (ctx as any).lastY || mouseY;
+    const lastY = (ctx as any).lastY || mouseY;
 
     // Move to the last position
+    ctx.beginPath();
     ctx.moveTo(lastX, lastY);
 
     // Draw line to current position
+    const midX = (lastX + mouseX) / 2;
+    const midY = (lastY + mouseY) / 2;
+    ctx.quadraticCurveTo(lastX, lastY, midX, midY);
+
     ctx.lineTo(mouseX, mouseY);
     ctx.stroke();
 
@@ -1165,8 +1181,8 @@ export default function Home(): JSX.Element {
     if (!ctx) return;
 
     // Reset the last position
-    delete  (ctx as any).lastX;
-    delete  (ctx as any).lastY;
+    delete (ctx as any).lastX;
+    delete (ctx as any).lastY;
 
     ctx.closePath();
 
@@ -1215,14 +1231,16 @@ export default function Home(): JSX.Element {
       return;
     }
 
-const canvas = activeCanvasId !== null ? canvasRefs.current[activeCanvasId] : null;
+    const canvas =
+      activeCanvasId !== null ? canvasRefs.current[activeCanvasId] : null;
     if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     // Save current state before adding text
-    const state = activeCanvasId !== null ? canvasStates.current[activeCanvasId] : null;
+    const state =
+      activeCanvasId !== null ? canvasStates.current[activeCanvasId] : null;
     if (state) {
       state.undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
       state.redoStack = [];
@@ -1231,46 +1249,48 @@ const canvas = activeCanvasId !== null ? canvasRefs.current[activeCanvasId] : nu
     // Get styling from the textarea
     const textarea = textInputRef.current;
     if (!textarea) return;
-    
-    const isBold = textarea.style.fontWeight === 'bold';
-    const isItalic = textarea.style.fontStyle === 'italic';
-    const isUnderlined = textarea.style.textDecoration === 'underline';
-    const textAlign = textarea.style.textAlign || 'left';
-    
+
+    const isBold = textarea.style.fontWeight === "bold";
+    const isItalic = textarea.style.fontStyle === "italic";
+    const isUnderlined = textarea.style.textDecoration === "underline";
+    const textAlign = textarea.style.textAlign || "left";
+
     // Set text properties
-    ctx.font = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : ''}${penSize * 2}px Arial`;
+    ctx.font = `${isItalic ? "italic " : ""}${isBold ? "bold " : ""}${
+      penSize * 2
+    }px Arial`;
     ctx.fillStyle = penColor;
     ctx.textAlign = textAlign as CanvasTextAlign;
-    
+
     // Process the text for rendering
     const lines = textInputValue.split("\n");
     let yOffset = textInputPosition.y;
     const lineHeight = penSize * 2 * 1.2; // 1.2 times font size for line height
-    
+
     // Calculate x position based on text alignment
     let xPos = textInputPosition.x;
-    if (textAlign === 'center') {
+    if (textAlign === "center") {
       // No adjustment needed as canvas uses the center point
-    } else if (textAlign === 'right') {
+    } else if (textAlign === "right") {
       // No adjustment needed as canvas handles right alignment
     }
-    
-    lines.forEach(line => {
+
+    lines.forEach((line) => {
       // Draw the text with proper alignment
       ctx.fillText(line, xPos, yOffset);
-      
+
       // Add underline if needed
       if (isUnderlined) {
         const textWidth = ctx.measureText(line).width;
         let underlineX = xPos;
-        
+
         // Adjust underline position based on text alignment
-        if (textAlign === 'center') {
-          underlineX = xPos - (textWidth / 2);
-        } else if (textAlign === 'right') {
+        if (textAlign === "center") {
+          underlineX = xPos - textWidth / 2;
+        } else if (textAlign === "right") {
           underlineX = xPos - textWidth;
         }
-        
+
         ctx.beginPath();
         ctx.moveTo(underlineX, yOffset + 3);
         ctx.lineTo(underlineX + textWidth, yOffset + 3);
@@ -1278,14 +1298,14 @@ const canvas = activeCanvasId !== null ? canvasRefs.current[activeCanvasId] : nu
         ctx.lineWidth = 1;
         ctx.stroke();
       }
-      
+
       yOffset += lineHeight;
     });
 
     // Save to localStorage after adding text
-if (activeCanvasId !== null) {
-  saveCanvasToLocalStorage(activeCanvasId, canvas);
-}
+    if (activeCanvasId !== null) {
+      saveCanvasToLocalStorage(activeCanvasId, canvas);
+    }
 
     // Reset text input
     setTextInputPosition(null);
@@ -1867,6 +1887,49 @@ if (activeCanvasId !== null) {
     };
   }, [resizing, activeTextBox, resizeHandle, activeCanvasId]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only apply shortcuts when not typing in input fields
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      switch (e.key.toLowerCase()) {
+        case "1": // Pen tool
+          handleToolSelect("pen");
+          setSelectedShape(null);
+          break;
+        case "2": // Eraser tool
+          handleToolSelect("eraser");
+          break;
+        case "3": // Text box tool
+          handleToolSelect("textBox");
+          break;
+        case "4": // Shapes dropdown
+          setShowShapesDropdown(!showShapesDropdown);
+          break;
+        case "z": // Undo when Ctrl is pressed
+          if (e.ctrlKey) {
+            e.preventDefault();
+            undo();
+          }
+          break;
+        case "y": // Redo when Ctrl is pressed
+          if (e.ctrlKey) {
+            e.preventDefault();
+            redo();
+          }
+          break;
+
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showShapesDropdown]);
   return (
     <div className="relative">
       {/* Sidebar */}
@@ -1907,7 +1970,6 @@ if (activeCanvasId !== null) {
               <span>Export as PDF</span>
             </button>
 
-
             <button
               onClick={resetAllCanvases}
               className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
@@ -1917,7 +1979,6 @@ if (activeCanvasId !== null) {
               <span>Reset all canvases</span>
             </button>
 
-            
             <button
               className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
               onClick={saveAllCanvases}
@@ -1925,6 +1986,14 @@ if (activeCanvasId !== null) {
               <img src={ButtonImages.saveBtn} className="w-5 h-5 ml-2" />
               <span>Save All</span>
             </button>
+
+            {/* <button
+              className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
+              onClick={handleDashboard}
+            >
+              <img src={ButtonImages.saveBtn} className="w-5 h-5 ml-2" />
+              <span>Dashboard</span>
+            </button> */}
 
             <div className="border-t border-gray-600 my-2"></div>
 
@@ -1967,29 +2036,32 @@ if (activeCanvasId !== null) {
               <img src={ButtonImages.linkedinBtn} className="w-5 h-5 ml-2" />
               <span>Linkedin</span>
             </a>
-            <div className="login-logout-container">
-            {isLoggedIn ? (
-            <button 
-            onClick={handleLogout}
-            className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
-              <img src={ButtonImages.logOutBtn} className="w-5 h-5 ml-2" />
-              <span>Log Out</span>
-            </button>
-             ) : (
-            <button 
-            onClick={handleLaunchPage}
-            className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
-              <img src={ButtonImages.logInBtn} className="w-5 h-5 ml-2" />
-              <span>Log In</span>
-            </button>
-             )}
-             </div>
-
             <div className="border-t border-gray-600 my-2"></div>
+            <div className="login-logout-container">
+              {isLoggedIn ? (
+                <button
+                  onClick={handleLogout}
+                  className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
+                >
+                  <img src={ButtonImages.logOutBtn} className="w-5 h-5 ml-2" />
+                  <span>Sign Up</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleLaunchPage}
+                  className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded"
+                >
+                  <img src={ButtonImages.logInBtn} className="w-5 h-5 ml-2" />
+                  <span>Sign In</span>
+                </button>
+              )}
+            </div>
+
             <button className="menu-item flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700 rounded">
               <img src={ButtonImages.helpBtn} className="w-5 h-5 ml-2" />
               <span>Help</span>
             </button>
+
             {isMobile && (
               <>
                 <div className="border-t border-gray-600 my-2"></div>
@@ -2309,7 +2381,6 @@ if (activeCanvasId !== null) {
                         >
                           <span className="underline text-white">U</span>
                         </button>
-                        
                       </div>
                       <textarea
                         ref={textInputRef}
@@ -2367,16 +2438,15 @@ if (activeCanvasId !== null) {
               </div>
               <div className="absolute bottom-2 left-2 bg-gray-700 px-2 py-1 rounded text-white text-xs">
                 {canvas.name}
-
               </div>
               <div className="absolute bottom-0 right-2  px-2 py-1 rounded text-sm">
-              <button
+                <button
                   onClick={resetCanvas}
                   className=" flex items-center gap-2 w-full p-2 bg-[#403d6a] text-gray-300 hover:bg-[#2c2a46] rounded"
                 >
                   Reset
                 </button>
-                </div>
+              </div>
             </div>
           ))}
 
@@ -2398,7 +2468,7 @@ if (activeCanvasId !== null) {
               ☰
             </button>
 
-            <span className="text-white text-xl absolute left-12 top-4 ">
+            <span className="text-white text-xl absolute left-12 top-4 cursor-pointer ">
               INSCRIBE
             </span>
 
@@ -2415,26 +2485,36 @@ if (activeCanvasId !== null) {
                         ? "bg-[#403d6a]"
                         : "bg-gray-700"
                     }`}
-                    title="Pencil"
+                    title="Pencil (1)"
                   >
-                    <img
-                      src={ButtonImages.pencilImg}
-                      alt="Pencil"
-                      className="w-5 h-5"
-                    />
+                    <div className="relative">
+                      <img
+                        src={ButtonImages.pencilImg}
+                        alt="Pencil"
+                        className="w-5 h-5"
+                      />
+                      <span className="absolute -bottom-0 -right-1 text-xs text-white bg-transparent  w-2 h-2 flex items-center justify-center">
+                        1
+                      </span>
+                    </div>
                   </button>
                   <button
                     onClick={() => handleToolSelect("eraser")}
                     className={`tool p-2 rounded-md hover:bg-[#403d6a] ${
                       selectedTool === "eraser" ? "bg-[#403d6a]" : "bg-gray-700"
                     }`}
-                    title="Eraser"
+                    title="Eraser (2)"
                   >
-                    <img
-                      src={ButtonImages.eraserImg}
-                      alt="Eraser"
-                      className="w-5 h-5"
-                    />
+                    <div className="relative">
+                      <img
+                        src={ButtonImages.eraserImg}
+                        alt="Eraser"
+                        className="w-5 h-5"
+                      />
+                      <span className="absolute -bottom-0 -right-1 text-xs text-white bg-transparent  w-2 h-2 flex items-center justify-center">
+                        2
+                      </span>
+                    </div>
                   </button>
                   <button
                     onClick={() => handleToolSelect("textBox")}
@@ -2443,13 +2523,18 @@ if (activeCanvasId !== null) {
                         ? "bg-[#403d6a]"
                         : "bg-gray-700"
                     }`}
-                    title="Text Box"
+                    title="Text Box (3)"
                   >
-                    <img
-                      src={ButtonImages.textBoxImage}
-                      alt="Text Box"
-                      className="w-5 h-5"
-                    />
+                    <div className="relative">
+                      <img
+                        src={ButtonImages.textBoxImage}
+                        alt="Text Box"
+                        className="w-5 h-5"
+                      />
+                      <span className="absolute -bottom-0 -right-1 text-xs text-white bg-transparent  w-2 h-2 flex items-center justify-center">
+                        3
+                      </span>
+                    </div>
                   </button>
                   <div className="relative">
                     <button
@@ -2460,14 +2545,19 @@ if (activeCanvasId !== null) {
                       className={`tool p-2 rounded-md hover:bg-[#403d6a] ${
                         selectedShape ? "bg-[#403d6a]" : "bg-gray-700"
                       }`}
-                      title="Shapes"
+                      title="Shapes (4)"
                     >
-                      <img
-                        src={ButtonImages.shapesBtn}
-                        alt="Shapes"
-                        className="w-5 h-5"
-                        title="Shapes"
-                      />
+                      <div className="relative">
+                        <img
+                          src={ButtonImages.shapesBtn}
+                          alt="Shapes"
+                          className="w-5 h-5"
+                          title="Shapes"
+                        />
+                        <span className="absolute -bottom-0 -right-2 text-xs text-white bg-transparent  w-2 h-2 flex items-center justify-center">
+                          4
+                        </span>
+                      </div>
                     </button>
                     {showShapesDropdown && (
                       <div
@@ -2557,24 +2647,28 @@ if (activeCanvasId !== null) {
                   <button
                     onClick={undo}
                     className="tool p-2 rounded-md bg-gray-700 hover:bg-[#403d6a]"
-                    title="Undo"
+                    title="Undo (Ctrl+Z)"
                   >
-                    <img
-                      src={ButtonImages.undoImg}
-                      alt="Undo"
-                      className="w-5 h-5"
-                    />
+                    <div className="relative">
+                      <img
+                        src={ButtonImages.undoImg}
+                        alt="Undo"
+                        className="w-5 h-5"
+                      />
+                    </div>
                   </button>
                   <button
                     onClick={redo}
                     className="tool p-2 rounded-md bg-gray-700 hover:bg-[#403d6a]"
-                    title="Redo"
+                    title="Redo (Ctrl+Y)"
                   >
-                    <img
-                      src={ButtonImages.redoImg}
-                      alt="Redo"
-                      className="w-5 h-5"
-                    />
+                    <div className="relative">
+                      <img
+                        src={ButtonImages.redoImg}
+                        alt="Redo"
+                        className="w-5 h-5"
+                      />
+                    </div>
                   </button>
                 </>
               )}
