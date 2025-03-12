@@ -161,6 +161,21 @@ export default function Home(): JSX.Element {
       }, 50);
     }, 300);
   };
+
+  const handleInscribeBtn = () => {
+    const mainContainer = document.getElementById('root') || document.body;
+    mainContainer.classList.add('fade-out');
+
+    // Navigate to launch page
+    setTimeout(() => {
+      navigate('/');
+      setTimeout(() => {
+        mainContainer.classList.remove('fade-out');
+      }, 50);
+    }, 300);
+  };
+
+
   // const handleDashboard = () => {
 
   //   // Add fade-out effect
@@ -1946,9 +1961,12 @@ export default function Home(): JSX.Element {
             &times;
           </button>
           {isSidebarOpen && (
-            <span className="text-white text-xl absolute left-12 top-4 md:right-22 md:left-auto">
-              INSCRIBE
-            </span>
+            <span>
+              <button
+              onClick={handleInscribeBtn}>
+              <img src={ButtonImages.inscribeImg} className="w-50 h-10  absolute left-12 top-5 md:right-22 md:left-auto" />
+              </button>
+              </span>
           )}
 
           <div className="mt-12 space-y-4">
@@ -2467,10 +2485,13 @@ export default function Home(): JSX.Element {
             >
               ☰
             </button>
-
-            <span className="text-white text-xl absolute left-12 top-4 cursor-pointer ">
-              INSCRIBE
-            </span>
+            <span>
+            <button
+            onClick={handleInscribeBtn}
+            className=" absolute left-12 top-4  cursor-pointer">
+              <img src={ButtonImages.inscribeImg} className="w-30 h-8 " />
+              </button>
+              </span>
 
             <div className="tools flex justify-center items-center flex-1 overflow-x-auto gap-1 bg-gray-800 ">
               {!isMobile && (

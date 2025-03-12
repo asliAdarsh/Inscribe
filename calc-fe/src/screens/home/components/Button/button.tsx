@@ -22,6 +22,7 @@ import logOutBtn from "./assets/logout.png";
 import facebookBtn from "./assets/facebook.png";
 import gitImg from "./assets/githubImg.png";
 import googleImg from "./assets/google.png";
+import inscribeImg from "./assets/inscribe.png";
 
 
 export  {
@@ -48,5 +49,6 @@ export  {
   logOutBtn,
   facebookBtn,
   gitImg,
-  googleImg
+  googleImg,
+  inscribeImg
 };
