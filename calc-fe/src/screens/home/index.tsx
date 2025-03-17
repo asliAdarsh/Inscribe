@@ -748,7 +748,19 @@ export default function Home(): JSX.Element {
     if (selectedTool === "textBox") {
       const adjustedPosition = adjustTextPosition(e, canvasId);
       if (adjustedPosition) {
-        setTextInputPosition(adjustedPosition);
+        // Instead of immediately showing the text input, we'll create a text element
+        // and show the input when the user clicks on it
+        const canvas = canvasRefs.current[canvasId];
+        if (!canvas) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const mouseX = (e.clientX - rect.left) * scaleX;
+        const mouseY = (e.clientY - rect.top) * scaleY;
+        
+        // Create a new text box at this position
+        setTextInputPosition({ x: mouseX, y: mouseY });
         setTextInputValue("");
 
         // Focus the text input after a short delay to ensure it's rendered
@@ -1277,50 +1289,79 @@ export default function Home(): JSX.Element {
     ctx.fillStyle = penColor;
     ctx.textAlign = textAlign as CanvasTextAlign;
 
-    // Process the text for rendering
-    const lines = textInputValue.split("\n");
-    let yOffset = textInputPosition.y;
-    const lineHeight = penSize * 2 * 1.2; // 1.2 times font size for line height
+        // Calculate maximum width for text wrapping (distance from text position to right edge of canvas)
+        const maxWidth = canvas.width - textInputPosition.x - 20; // 20px padding from right edge
 
-    // Calculate x position based on text alignment
-    let xPos = textInputPosition.x;
-    if (textAlign === "center") {
-      // No adjustment needed as canvas uses the center point
-    } else if (textAlign === "right") {
-      // No adjustment needed as canvas handles right alignment
-    }
-
-    lines.forEach((line) => {
-      // Draw the text with proper alignment
-      ctx.fillText(line, xPos, yOffset);
-
-      // Add underline if needed
-      if (isUnderlined) {
-        const textWidth = ctx.measureText(line).width;
-        let underlineX = xPos;
-
-        // Adjust underline position based on text alignment
-        if (textAlign === "center") {
-          underlineX = xPos - textWidth / 2;
-        } else if (textAlign === "right") {
-          underlineX = xPos - textWidth;
+        // Process the text for rendering with word wrapping
+        const words = textInputValue.split(' ');
+        const lines: string[] = [];
+        let currentLine = words[0] || '';
+    
+        // Create wrapped lines based on available width
+        for (let i = 1; i < words.length; i++) {
+          const testLine = currentLine + ' ' + words[i];
+          const metrics = ctx.measureText(testLine);
+          
+          if (metrics.width > maxWidth) {
+            lines.push(currentLine);
+            currentLine = words[i];
+          } else {
+            currentLine = testLine;
+          }
         }
-
-        ctx.beginPath();
-        ctx.moveTo(underlineX, yOffset + 3);
-        ctx.lineTo(underlineX + textWidth, yOffset + 3);
-        ctx.strokeStyle = penColor;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
-
-      yOffset += lineHeight;
-    });
-
-    // Save to localStorage after adding text
-    if (activeCanvasId !== null) {
-      saveCanvasToLocalStorage(activeCanvasId, canvas);
-    }
+        
+        // Add the last line
+        if (currentLine) {
+          lines.push(currentLine);
+        }
+    
+        // Handle manual line breaks (from Enter key)
+        const wrappedLines: string[] = [];
+        lines.forEach(line => {
+          const manualBreaks = line.split('\n');
+          manualBreaks.forEach(brokenLine => {
+            wrappedLines.push(brokenLine);
+          });
+        });
+    
+        let yOffset = textInputPosition.y;
+        const lineHeight = penSize * 2 * 1.2; // 1.2 times font size for line height
+    
+        // Calculate x position based on text alignment
+        let xPos = textInputPosition.x;
+    
+        // Draw each wrapped line
+        wrappedLines.forEach((line) => {
+          // Draw the text with proper alignment
+          ctx.fillText(line, xPos, yOffset);
+    
+          // Add underline if needed
+          if (isUnderlined) {
+            const textWidth = ctx.measureText(line).width;
+            let underlineX = xPos;
+    
+            // Adjust underline position based on text alignment
+            if (textAlign === "center") {
+              underlineX = xPos - textWidth / 2;
+            } else if (textAlign === "right") {
+              underlineX = xPos - textWidth;
+            }
+    
+            ctx.beginPath();
+            ctx.moveTo(underlineX, yOffset + 3);
+            ctx.lineTo(underlineX + textWidth, yOffset + 3);
+            ctx.strokeStyle = penColor;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
+    
+          yOffset += lineHeight;
+        });
+    
+        // Save to localStorage after adding text
+        if (activeCanvasId !== null) {
+          saveCanvasToLocalStorage(activeCanvasId, canvas);
+        }
 
     // Reset text input
     setTextInputPosition(null);
@@ -2307,12 +2348,13 @@ export default function Home(): JSX.Element {
                 <>
                   {selectedTool === "textBox" && textInputPosition && (
                     <div
-                      className="text-box-container"
-                      style={{
-                        left: `${textInputPosition.x}px`,
-                        top: `${textInputPosition.y}px`,
-                      }}
-                    >
+                    className="text-box-container"
+                    style={{
+                      left: `${textInputPosition.x}px`,
+                      top: `${textInputPosition.y}px`,
+                      maxWidth: `${(canvasRefs.current[activeCanvasId as number]?.width ?? 0) - textInputPosition.x - 20}px`
+                    }}
+                  >
                       <div
                         className="text-editing-toolbar bg-gray-800 p-1 mb-1 rounded flex gap-1"
                         onMouseDown={(e) => e.preventDefault()} // Prevent blur when clicking toolbar
@@ -2428,6 +2470,13 @@ export default function Home(): JSX.Element {
                           whiteSpace: "pre-wrap",
                           padding: "8px",
                           borderRadius: "4px",
+                          width: "100%",
+                          maxHeight: "200px",
+                          overflowY: "auto",
+                          wordWrap: "break-word",
+                          wordBreak: "break-word",
+                          overflowWrap: "break-word",
+                          boxSizing: "border-box"
                         }}
                         className="text-input"
                       />
