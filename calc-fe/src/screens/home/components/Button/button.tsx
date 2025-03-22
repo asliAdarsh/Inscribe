@@ -23,6 +23,7 @@ import facebookBtn from "./assets/facebook.png";
 import gitImg from "./assets/githubImg.png";
 import googleImg from "./assets/google.png";
 import inscribeImg from "./assets/inscribe.png";
+import darkModeBtn from "./assets/darkMode.png";
 
 
 export  {
@@ -50,5 +51,6 @@ export  {
   facebookBtn,
   gitImg,
   googleImg,
-  inscribeImg
+  inscribeImg,
+  darkModeBtn
 };

@@ -4,6 +4,8 @@ import axios from "axios";
 import { jsPDF } from "jspdf";
 import * as ButtonImages from "./components/Button/button";
 import { useNavigate } from "react-router-dom";
+// Removed unused import 'rough'
+import getStroke from "perfect-freehand";
 
 interface CanvasMetadata {
   id: number;
@@ -33,6 +35,22 @@ interface Response {
   assign: boolean;
   steps: string;
 }
+
+const getSvgPathFromStroke = (stroke: number[][]) => {
+  if (!stroke.length) return "";
+
+  const d = stroke.reduce(
+    (acc, [x0, y0], i, arr) => {
+      const [x1, y1] = arr[(i + 1) % arr.length];
+      acc.push(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
+      return acc;
+    },
+    ["M", ...stroke[0], "Q"]
+  );
+
+  d.push("Z");
+  return d.join(" ");
+};
 
 const useMobile = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
@@ -119,9 +137,23 @@ export default function Home(): JSX.Element {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [showSidebarShapesDropdown, setShowSidebarShapesDropdown] =
     useState(false);
-
+    // Add this with your other state variables
+    const [showPenDropdown, setShowPenDropdown] = useState(false);  
   const navigate = useNavigate();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+    // Add this to your useEffect that handles click outside for dropdowns
+    useEffect(() => {
+      const handleClickOutside = () => {
+        setShowShapesDropdown(false);
+        setShowPenDropdown(false); // Add this line
+      };
+      
+      document.addEventListener("click", handleClickOutside);
+      return () => {
+        document.removeEventListener("click", handleClickOutside);
+      };
+    }, []);
 
   useEffect(() => {
     // Check if user is logged in
@@ -1108,37 +1140,63 @@ export default function Home(): JSX.Element {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Ensure our drawing settings are maintained (in case of context reset)
+    // Ensure our drawing settings are maintained
     ctx.lineWidth = penSize;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
     if (selectedTool === "pen") {
-      ctx.strokeStyle = penColor;
-      ctx.globalCompositeOperation = "source-over";
+      // For pen tool, we'll collect points and use perfect-freehand later
+      const lastX = (ctx as any).lastX || mouseX;
+      const lastY = (ctx as any).lastY || mouseY;
+      
+      // Store the current point
+      if (!(ctx as any).points) {
+        (ctx as any).points = [];
+      }
+      (ctx as any).points.push([mouseX, mouseY]);
+      
+      // Draw with perfect-freehand
+      const stroke = getStroke((ctx as any).points, {
+        size: penSize,
+        thinning: 0.5,
+        smoothing: 0.5,
+        streamline: 0.5,
+      });
+      
+      // Convert to SVG path and draw
+      const pathData = getSvgPathFromStroke(stroke);
+      
+      // Clear and redraw
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Restore previous state
+      const state = canvasStates.current[canvasId];
+      if (state && state.undoStack.length > 0) {
+        ctx.putImageData(state.undoStack[state.undoStack.length - 1], 0, 0);
+      }
+      
+      // Draw the new stroke
+      ctx.fillStyle = penColor;
+      ctx.fill(new Path2D(pathData));
     } else if (selectedTool === "eraser") {
+      // Eraser can use the original implementation
       ctx.strokeStyle = "rgba(0,0,0,1)";
       ctx.globalCompositeOperation = "destination-out";
+      
+      const lastX = (ctx as any).lastX || mouseX;
+      const lastY = (ctx as any).lastY || mouseY;
+      
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      
+      const midX = (lastX + mouseX) / 2;
+      const midY = (lastY + mouseY) / 2;
+      ctx.quadraticCurveTo(lastX, lastY, midX, midY);
+      
+      ctx.lineTo(mouseX, mouseY);
+      ctx.stroke();
     }
-
-    // Begin a new path for each movement to ensure smooth drawing
-
-    // Get the previous position from the last draw call
-    // Use type assertion to access lastX property
-    const lastX = (ctx as any).lastX || mouseX;
-    const lastY = (ctx as any).lastY || mouseY;
-
-    // Move to the last position
-    ctx.beginPath();
-    ctx.moveTo(lastX, lastY);
-
-    // Draw line to current position
-    const midX = (lastX + mouseX) / 2;
-    const midY = (lastY + mouseY) / 2;
-    ctx.quadraticCurveTo(lastX, lastY, midX, midY);
-
-    ctx.lineTo(mouseX, mouseY);
-    ctx.stroke();
 
     // Store current position for next draw call
     (ctx as any).lastX = mouseX;
@@ -1206,6 +1264,13 @@ export default function Home(): JSX.Element {
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    // For pen tool, finalize the perfect-freehand stroke
+    if (selectedTool === "pen" && (ctx as any).points) {
+      // The final stroke is already drawn in the draw function
+      // Just clean up the points
+      delete (ctx as any).points;
+    }
 
     // Reset the last position
     delete (ctx as any).lastX;
@@ -2545,29 +2610,73 @@ export default function Home(): JSX.Element {
             <div className="tools flex justify-center items-center flex-1 overflow-x-auto gap-1 bg-gray-800 ">
               {!isMobile && (
                 <>
+                  <div className="relative">
                   <button
-                    onClick={() => {
-                      handleToolSelect("pen");
-                      setSelectedShape(null); // Explicitly set to null for freehand drawing
-                    }}
-                    className={`tool p-2 rounded-md hover:bg-[#403d6a] ${
-                      selectedTool === "pen" && !selectedShape
-                        ? "bg-[#403d6a]"
-                        : "bg-gray-700"
-                    }`}
-                    title="Pencil (1)"
-                  >
-                    <div className="relative">
-                      <img
-                        src={ButtonImages.pencilImg}
-                        alt="Pencil"
-                        className="w-5 h-5"
-                      />
-                      <span className="absolute -bottom-0 -right-1 text-xs text-white bg-transparent  w-2 h-2 flex items-center justify-center">
-                        1
-                      </span>
-                    </div>
-                  </button>
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowPenDropdown(!showPenDropdown);
+                      }}
+                      className={`tool p-2 rounded-md hover:bg-[#403d6a] ${
+                        selectedTool === "pen" || selectedTool === "textBox"
+                          ? "bg-[#403d6a]"
+                          : "bg-gray-700"
+                      }`}
+                      title="Drawing Tools (1)"
+                    >
+                      <div className="relative">
+                        <img
+                          src={ButtonImages.pencilImg}
+                          alt="Drawing Tools"
+                          className="w-5 h-5"
+                        />
+                        <span className="absolute -bottom-0 -right-1 text-xs text-white bg-transparent w-2 h-2 flex items-center justify-center">
+                          1
+                        </span>
+                      </div>
+                    </button>                    
+                    {showPenDropdown && (
+                      <div
+                        className="fixed mt-1 bg-gray-800 rounded-md shadow-lg z-[9999] border border-gray-700 w-40"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          title="Pen"
+                          className="flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                          onClick={() => {
+                            handleToolSelect("pen");
+                            setSelectedShape(null);
+                            setShowPenDropdown(false);
+                          }}
+                        >
+                          <div className="w-5 h-5 flex items-center justify-center">
+                            <img
+                              src={ButtonImages.pencilImg}
+                              alt="Pencil"
+                              className="w-4 h-4"
+                            />
+                          </div>
+                          <span>Pen</span>
+                        </button>
+                        <button
+                          title="Draw Text"
+                          className="flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
+                          onClick={() => {
+                            handleToolSelect("textBox");
+                            setShowPenDropdown(false);
+                          }}
+                        >
+                          <div className="w-5 h-5 flex items-center justify-center">
+                            <img
+                              src={ButtonImages.textBoxImage}
+                              alt="Text Box"
+                              className="w-4 h-4"
+                            />
+                          </div>
+                          <span>Draw Text</span>
+                        </button>
+                      </div>
+                    )}                  
+                    </div>                  
                   <button
                     onClick={() => handleToolSelect("eraser")}
                     className={`tool p-2 rounded-md hover:bg-[#403d6a] ${
