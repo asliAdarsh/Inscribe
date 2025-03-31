@@ -24,6 +24,7 @@ import gitImg from "./assets/githubImg.png";
 import googleImg from "./assets/google.png";
 import inscribeImg from "./assets/inscribe.png";
 import darkModeBtn from "./assets/darkMode.png";
+import selectionBtn from "./assets/selection.png";
 
 
 export  {
@@ -52,5 +53,6 @@ export  {
   gitImg,
   googleImg,
   inscribeImg,
-  darkModeBtn
+  darkModeBtn,
+  selectionBtn
 };

@@ -1,10 +1,9 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Fragment } from "react";
 import "./inde.css";
 import axios from "axios";
 import { jsPDF } from "jspdf";
 import * as ButtonImages from "./components/Button/button";
 import { useNavigate } from "react-router-dom";
-// Removed unused import 'rough'
 import getStroke from "perfect-freehand";
 
 interface CanvasMetadata {
@@ -34,6 +33,33 @@ interface Response {
   result: string;
   assign: boolean;
   steps: string;
+}
+
+interface DraggedImageInfo {
+  img: HTMLImageElement | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  offsetX?: number;
+  offsetY?: number;
+  canvasSnapshot?: ImageData | null;
+  selected?: boolean;
+  tempX?: number;
+  tempY?: number;
+}
+
+interface TextElement {
+  id: string;
+  text: string;
+  position: { x: number; y: number };
+  fontSize: number;
+  color: string;
+  isBold: boolean;
+  isItalic: boolean;
+  isUnderlined: boolean;
+  textAlign: string;
+  deleted?: boolean; // Add this flag to track deleted text elements
 }
 
 const getSvgPathFromStroke = (stroke: number[][]) => {
@@ -76,31 +102,18 @@ export default function Home(): JSX.Element {
   const [penColor, setPenColor] = useState<string>("#ffffff");
   const [penSize, setPenSize] = useState<number>(5);
   const [selectedTool, setSelectedTool] = useState<
-    "pen" | "eraser" | "textBox"
+    "pen" | "eraser" | "textBox" | "selection" | "eraser"
   >("pen");
   const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
   const canvasStates = useRef<
     Record<number, { undoStack: ImageData[]; redoStack: ImageData[] }>
   >({});
+  const [draggedImageInfo, setDraggedImageInfo] =
+    useState<DraggedImageInfo | null>(null);
   // Track which canvases have been initialized
   const initializedCanvases = useRef<Set<number>>(new Set());
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [reset, setReset] = useState<boolean>(false);
-  const [draggedImageInfo, setDraggedImageInfo] = useState<{
-    img: HTMLImageElement | null;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    offsetX: number;
-    offsetY: number;
-  } | null>(null);
-  const [textInputPosition, setTextInputPosition] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-  const [textInputValue, setTextInputValue] = useState("");
-  const textInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [dictOfVars, setDictOfVars] = useState({});
   const [result, setResult] = useState<GeneratedResult[]>([]);
   const [latexExpression, setLatexExpression] = useState<Array<string>>([]);
@@ -137,23 +150,54 @@ export default function Home(): JSX.Element {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [showSidebarShapesDropdown, setShowSidebarShapesDropdown] =
     useState(false);
-    // Add this with your other state variables
-    const [showPenDropdown, setShowPenDropdown] = useState(false);  
   const navigate = useNavigate();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [selectedElement, setSelectedElement] = useState<{
+    type: "image";
+    element: any;
+  } | null>(null);
+  const [textElements, setTextElements] = useState<TextElement[]>([]);
+  const [textSelectionBox, setTextSelectionBox] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
-    // Add this to your useEffect that handles click outside for dropdowns
-    useEffect(() => {
-      const handleClickOutside = () => {
-        setShowShapesDropdown(false);
-        setShowPenDropdown(false); // Add this line
-      };
-      
-      document.addEventListener("click", handleClickOutside);
-      return () => {
-        document.removeEventListener("click", handleClickOutside);
-      };
-    }, []);
+  // Make sure these state variables are defined
+  const [textInputPosition, setTextInputPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [textInputValue, setTextInputValue] = useState("");
+  const [activeTextId, setActiveTextId] = useState<string | null>(null);
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [showTextSelectionBox, setShowTextSelectionBox] = useState(false);
+  const textInputRef = useRef<HTMLTextAreaElement>(null);
+  const [loading, setLoading] = useState(false);
+  const [selectedArea, setSelectedArea] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionStart, setSelectionStart] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [selectionEnd, setSelectionEnd] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [originalCanvasState, setOriginalCanvasState] =
+    useState<ImageData | null>(null);
+  const [visibleSelectionBox, setVisibleSelectionBox] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
   useEffect(() => {
     // Check if user is logged in
@@ -195,18 +239,17 @@ export default function Home(): JSX.Element {
   };
 
   const handleInscribeBtn = () => {
-    const mainContainer = document.getElementById('root') || document.body;
-    mainContainer.classList.add('fade-out');
+    const mainContainer = document.getElementById("root") || document.body;
+    mainContainer.classList.add("fade-out");
 
     // Navigate to launch page
     setTimeout(() => {
-      navigate('/');
+      navigate("/");
       setTimeout(() => {
-        mainContainer.classList.remove('fade-out');
+        mainContainer.classList.remove("fade-out");
       }, 50);
     }, 300);
   };
-
 
   // const handleDashboard = () => {
 
@@ -603,76 +646,6 @@ export default function Home(): JSX.Element {
     };
   };
 
-  //   const canvas = canvasRefs.current[activeCanvasId as number];
-
-  //   if (canvas) {
-  //     const response = await axios({
-  //       method: "post",
-  //       url: `http://localhost:8900/calculate`,
-  //       data: {
-  //         image: canvas.toDataURL("image/png"),
-  //         dict_of_vars: dictOfVars,
-  //       },
-  //     });
-
-  //     const resp = await response.data;
-  //     console.log("Response", resp);
-  //     resp.data.forEach((data: Response) => {
-  //       if (data.assign === true) {
-  //         setDictOfVars({
-  //           ...dictOfVars,
-  //           [data.expr]: data.result,
-  //         });
-  //       }
-  //     });
-
-  //     const ctx = canvas.getContext("2d");
-  //     if (!ctx) return;
-  //     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  //     let minX = canvas.width,
-  //       minY = canvas.height,
-  //       maxX = 0,
-  //       maxY = 0;
-
-  //     for (let y = 0; y < canvas.height; y++) {
-  //       for (let x = 0; x < canvas.width; x++) {
-  //         const i = (y * canvas.width + x) * 4;
-  //         if (imageData.data[i + 3] > 0) {
-  //           minX = Math.min(minX, x);
-  //           minY = Math.min(minY, y);
-  //           maxX = Math.max(maxX, x);
-  //           maxY = Math.max(maxY, y);
-  //         }
-  //       }
-  //     }
-
-  //     const centerX = (minX + maxX) / 2;
-  //     const centerY = (minY + maxY) / 2;
-
-  //     setLatexPosition({
-  //       x: centerX,
-  //       y: centerY,
-  //     });
-  //     resp.data.forEach((data: Response, index: number) => {
-  //       setTimeout(() => {
-  //         setResult((prevRes) => [
-  //           ...prevRes,
-  //           {
-  //             expression: data.expr,
-  //             answer: data.result,
-  //             position: {
-  //               x: centerX,
-  //               y: centerY + 30 * index,
-  //             },
-  //           },
-  //         ]);
-  //       }, 1000 * index);
-  //     });
-  //   }
-  //   setIsResultsSidebarOpen(true); // Open the results sidebar
-  // };
-
-  // Replace your startDrawing function with this:
   const adjustTextPosition = (
     e: React.MouseEvent<HTMLCanvasElement>,
     canvasId: number
@@ -776,33 +749,8 @@ export default function Home(): JSX.Element {
   ): void => {
     if (canvasId !== activeCanvasId) return;
 
-    // Prevent text tool interference
-    if (selectedTool === "textBox") {
-      const adjustedPosition = adjustTextPosition(e, canvasId);
-      if (adjustedPosition) {
-        // Instead of immediately showing the text input, we'll create a text element
-        // and show the input when the user clicks on it
-        const canvas = canvasRefs.current[canvasId];
-        if (!canvas) return;
-        
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        const mouseX = (e.clientX - rect.left) * scaleX;
-        const mouseY = (e.clientY - rect.top) * scaleY;
-        
-        // Create a new text box at this position
-        setTextInputPosition({ x: mouseX, y: mouseY });
-        setTextInputValue("");
-
-        // Focus the text input after a short delay to ensure it's rendered
-        setTimeout(() => {
-          if (textInputRef.current) {
-            textInputRef.current.focus();
-          }
-        }, 10);
-      }
-      return;
+    if (selectedTool === "selection" && selectedArea) {
+      clearSelection();
     }
 
     // Get the correct mouse position relative to the canvas
@@ -815,23 +763,39 @@ export default function Home(): JSX.Element {
     const mouseX = (e.clientX - rect.left) * scaleX;
     const mouseY = (e.clientY - rect.top) * scaleY;
 
-    // Existing drag check logic
-    if (draggedImageInfo) {
-      if (
-        mouseX >= draggedImageInfo.x &&
-        mouseX <= draggedImageInfo.x + draggedImageInfo.width &&
-        mouseY >= draggedImageInfo.y &&
-        mouseY <= draggedImageInfo.y + draggedImageInfo.height
-      ) {
-        setIsDragging(true);
-        setDraggedImageInfo({
-          ...draggedImageInfo,
-          offsetX: mouseX - draggedImageInfo.x,
-          offsetY: mouseY - draggedImageInfo.y,
-        });
-        return;
-      }
+    if (selectedTool === "textBox") {
+      // Set the text input position
+      setTextInputPosition({ x: mouseX, y: mouseY });
+      setTextInputValue("");
+      setActiveTextId(null);
+
+      // Focus the text input
+      setTimeout(() => {
+        if (textInputRef.current) {
+          textInputRef.current.focus();
+        }
+      }, 10);
+
+      return;
     }
+
+    if (selectedTool === "selection") {
+      setIsSelecting(true);
+      setSelectionStart({ x: mouseX, y: mouseY });
+
+      // Save the original canvas state before drawing selection
+      const canvas = canvasRefs.current[canvasId];
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          setOriginalCanvasState(
+            ctx.getImageData(0, 0, canvas.width, canvas.height)
+          );
+        }
+      }
+      return;
+    }
+
     if (selectedShape) {
       setIsDrawingShape(true);
       setShapeStartPosition({ x: mouseX, y: mouseY });
@@ -850,73 +814,163 @@ export default function Home(): JSX.Element {
       setTempCanvas(tempCanvasElement);
       return;
     }
-    setDrawing(true);
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (selectedTool === "pen" || selectedTool === "eraser") {
+      setDrawing(true);
 
-    // Set up drawing context
-    ctx.beginPath();
-    ctx.moveTo(mouseX, mouseY);
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        // Reset points for perfect-freehand
+        if (selectedTool === "pen") {
+          (ctx as any).points = [[mouseX, mouseY]];
+        }
 
-    // Store the starting position
-    (ctx as any).lastX = mouseX;
-    (ctx as any).lastY = mouseY;
+        // Reset last position
+        (ctx as any).lastX = mouseX;
+        (ctx as any).lastY = mouseY;
 
-    // Set drawing properties
-    ctx.lineWidth = penSize;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = selectedTool === "eraser" ? "rgba(0,0,0,1)" : penColor;
-    ctx.globalCompositeOperation =
-      selectedTool === "eraser" ? "destination-out" : "source-over";
+        // Set up the context for drawing
+        ctx.lineWidth = penSize;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.strokeStyle = penColor;
+        ctx.fillStyle = penColor;
 
-    // Save initial state
-    const state = canvasStates.current[canvasId];
-    if (state?.undoStack.length === 0) {
-      state.undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+        if (selectedTool === "eraser") {
+          ctx.globalCompositeOperation = "destination-out";
+        } else {
+          ctx.globalCompositeOperation = "source-over";
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(mouseX, mouseY);
+      }
     }
   };
 
   const runRoute = async () => {
     try {
-      const canvas = canvasRefs.current[activeCanvasId as number];
-      if (!canvas) return;
+      setLoading(true);
 
-      const response = await axios.post(`http://localhost:8900/calculate`, {
-        image: canvas.toDataURL("image/png"),
-        dict_of_vars: dictOfVars,
-      });
+      if (activeCanvasId === null) {
+        console.error("No active canvas");
+        setLoading(false);
+        return;
+      }
 
-      const resp = response.data;
-      const newResults: GeneratedResult[] = [];
+      const canvas = canvasRefs.current[activeCanvasId];
+      if (!canvas) {
+        console.error("Canvas reference not found");
+        setLoading(false);
+        return;
+      }
 
-      // Process results
-      resp.data.forEach((data: Response) => {
-        if (data.assign) {
-          setDictOfVars((prev) => ({ ...prev, [data.expr]: data.result }));
+      let imageData;
+
+      if (selectedArea) {
+        // Create a temporary canvas for the selected area
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = selectedArea.width;
+        tempCanvas.height = selectedArea.height;
+        const tempCtx = tempCanvas.getContext("2d");
+
+        if (tempCtx) {
+          // Copy only the selected area to the temporary canvas
+          tempCtx.drawImage(
+            canvas,
+            selectedArea.x,
+            selectedArea.y,
+            selectedArea.width,
+            selectedArea.height,
+            0,
+            0,
+            selectedArea.width,
+            selectedArea.height
+          );
+
+          // Get the image data from the temporary canvas
+          imageData = tempCanvas.toDataURL("image/png");
         }
-        newResults.push({
-          expression: data.expr,
-          answer: data.result,
-          position: { x: 0, y: 0 }, // Position not needed in sidebar
-          steps: data.steps || "No steps available", // Include steps from response
+      } else {
+        // If no selection, use the entire canvas
+        imageData = canvas.toDataURL("image/png");
+      }
+
+      if (!imageData) {
+        console.error("Failed to get image data");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        // Use the same API call as the old function
+        const response = await axios.post(`http://localhost:8900/calculate`, {
+          image: imageData,
+          dict_of_vars: dictOfVars,
         });
-      });
 
-      // Add to history
-      const historyItem: SearchHistoryItem = {
-        timestamp: new Date().toLocaleString(),
-        results: newResults,
-      };
+        const resp = response.data;
+        const newResults: GeneratedResult[] = [];
 
-      setSearchHistory((prev) => [historyItem, ...prev]);
-      setCurrentResults(newResults);
-      setIsResultsSidebarOpen(true);
+        // Process results (same as old function)
+        resp.data.forEach((data: Response) => {
+          if (data.assign) {
+            setDictOfVars((prev) => ({ ...prev, [data.expr]: data.result }));
+          }
+          newResults.push({
+            expression: data.expr,
+            answer: data.result,
+            position: { x: 0, y: 0 }, // Position not needed in sidebar
+            steps: data.steps || "No steps available", // Include steps from response
+          });
+        });
+
+        // Add to history (same as old function)
+        const historyItem: SearchHistoryItem = {
+          timestamp: new Date().toLocaleString(),
+          results: newResults,
+        };
+
+        // Clear the selection after processing
+        if (selectedArea) {
+          clearSelection();
+        }
+
+        setSearchHistory((prev) => [historyItem, ...prev]);
+        setCurrentResults(newResults);
+        setIsResultsSidebarOpen(true);
+      } catch (error) {
+        console.error("API error:", error);
+        alert("Error processing request");
+      }
     } catch (error) {
-      console.error("API error:", error);
-      alert("Error processing request");
+      console.error("Unexpected error:", error);
+      alert(
+        "An unexpected error occurred. Please check the console for details."
+      );
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const clearSelection = () => {
+    if (activeCanvasId === null) return;
+    
+    const canvas = canvasRefs.current[activeCanvasId];
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    
+    // Get the current state from the undo stack
+    const state = canvasStates.current[activeCanvasId];
+    if (state && state.undoStack.length > 0) {
+      const currentState = state.undoStack[state.undoStack.length - 1];
+      ctx.putImageData(currentState, 0, 0);
+    }
+    
+    // Clear the selection states
+    setSelectedArea(null);
   };
 
   const sendChatMessage = async () => {
@@ -1003,11 +1057,49 @@ export default function Home(): JSX.Element {
     );
   };
 
+  const redrawTextElements = (canvasId: number) => {
+    const canvas = canvasRefs.current[canvasId];
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Only redraw active (non-deleted) text elements
+    textElements.forEach((textElement) => {
+      // Skip if the text has been deleted or is empty
+      if (!textElement.text || textElement.deleted) return;
+
+      // Set text properties
+      ctx.font = `${textElement.isItalic ? "italic " : ""}${
+        textElement.isBold ? "bold " : ""
+      }${textElement.fontSize}px Arial`;
+      ctx.fillStyle = textElement.color;
+      ctx.textAlign = textElement.textAlign as CanvasTextAlign;
+      ctx.textBaseline = "top";
+
+      // Draw the text on canvas
+      const lines = textElement.text.split("\n");
+      const lineHeight = textElement.fontSize * 1.2;
+
+      lines.forEach((line, index) => {
+        ctx.fillText(
+          line,
+          textElement.position.x,
+          textElement.position.y + index * lineHeight
+        );
+      });
+    });
+  };
+
   const draw = (
     e: React.MouseEvent<HTMLCanvasElement>,
     canvasId: number
   ): void => {
     if (canvasId !== activeCanvasId) return;
+
+    if (selectedTool === "textBox") {
+      return;
+    }
 
     const canvas = canvasRefs.current[canvasId];
     if (!canvas) return;
@@ -1020,23 +1112,97 @@ export default function Home(): JSX.Element {
     const mouseX = (e.clientX - rect.left) * scaleX;
     const mouseY = (e.clientY - rect.top) * scaleY;
 
-    // Handle image dragging
-    if (isDragging && draggedImageInfo) {
-      const newX = mouseX - draggedImageInfo.offsetX;
-      const newY = mouseY - draggedImageInfo.offsetY;
+    if (isSelecting && selectedTool === "selection") {
+      if (!selectionStart) return;
 
-      setDraggedImageInfo({
-        ...draggedImageInfo,
-        x: newX,
-        y: newY,
-      });
+      const canvas = canvasRefs.current[canvasId];
+      if (!canvas) return;
 
-      // Redraw the canvas with the image at the new position
+      const ctx = canvas.getContext("2d");
+      if (!ctx || !originalCanvasState) return;
+
+      // Restore the original canvas state
+      ctx.putImageData(originalCanvasState, 0, 0);
+
+      // Calculate selection box dimensions
+      const x = Math.min(selectionStart.x, mouseX);
+      const y = Math.min(selectionStart.y, mouseY);
+      const width = Math.abs(mouseX - selectionStart.x);
+      const height = Math.abs(mouseY - selectionStart.y);
+
+      // Update selection end
+      setSelectionEnd({ x: mouseX, y: mouseY });
+
+      // Draw selection box
+      ctx.strokeStyle = "rgba(66, 133, 244, 0.8)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.strokeRect(x, y, width, height);
+
+      // Add a semi-transparent fill
+      ctx.fillStyle = "rgba(66, 133, 244, 0.1)";
+      ctx.fillRect(x, y, width, height);
+
+      ctx.setLineDash([]);
+      return;
+    }
+    if (
+      selectedTool === "selection" &&
+      selectedElement?.type === "image" &&
+      draggedImageInfo?.selected
+    ) {
+      // We're in selection mode with a selected image
+      const newX = mouseX - (draggedImageInfo.offsetX || 0);
+      const newY = mouseY - (draggedImageInfo.offsetY || 0);
+
+      // Get the canvas context
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      // Completely clear the canvas to remove the previous image
+      // Create a snapshot of the canvas state before starting to drag if we don't have one
+      if (!draggedImageInfo.canvasSnapshot) {
+        // Take a snapshot of the entire canvas
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        // Create a temporary canvas to store the background
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        const tempCtx = tempCanvas.getContext("2d");
+
+        if (tempCtx) {
+          // Draw the current state to the temp canvas
+          tempCtx.putImageData(imageData, 0, 0);
+
+          // Overwrite the image area with transparency
+          tempCtx.globalCompositeOperation = "destination-out";
+          tempCtx.fillRect(
+            draggedImageInfo.x,
+            draggedImageInfo.y,
+            draggedImageInfo.width,
+            draggedImageInfo.height
+          );
+
+          // Store this canvas state
+          setDraggedImageInfo({
+            ...draggedImageInfo,
+            canvasSnapshot: tempCtx.getImageData(
+              0,
+              0,
+              canvas.width,
+              canvas.height
+            ),
+          });
+        }
+      }
+
+      // Clear the entire canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Restore the background without the image
+      if (draggedImageInfo.canvasSnapshot) {
+        ctx.putImageData(draggedImageInfo.canvasSnapshot, 0, 0);
+      }
 
       // Draw the image at its new position
       ctx.drawImage(
@@ -1046,6 +1212,102 @@ export default function Home(): JSX.Element {
         draggedImageInfo.width,
         draggedImageInfo.height
       );
+
+      // Draw selection border around the image
+      ctx.strokeStyle = "#0066ff";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.strokeRect(
+        newX,
+        newY,
+        draggedImageInfo.width,
+        draggedImageInfo.height
+      );
+      ctx.setLineDash([]);
+
+      // Update the draggedImageInfo with the new position (but don't commit yet)
+      setDraggedImageInfo({
+        ...draggedImageInfo,
+        tempX: newX,
+        tempY: newY,
+      });
+
+      return;
+    }
+
+    if (isDragging && draggedImageInfo) {
+      const newX = mouseX - (draggedImageInfo.offsetX || 0);
+      const newY = mouseY - (draggedImageInfo.offsetY || 0);
+
+      // Get the canvas context
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      // Create a snapshot of the canvas state before starting to drag if we don't have one
+      if (!draggedImageInfo.canvasSnapshot) {
+        // Take a snapshot of the entire canvas
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        // Create a temporary canvas to store the background
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        const tempCtx = tempCanvas.getContext("2d");
+
+        if (tempCtx) {
+          // Draw the current state to the temp canvas
+          tempCtx.putImageData(imageData, 0, 0);
+
+          // Overwrite the image area with transparency
+          tempCtx.globalCompositeOperation = "copy"; // Overwrites destination
+          tempCtx.fillStyle = "rgba(0, 0, 0, 0)"; // Transparent
+          tempCtx.fillRect(
+            draggedImageInfo.x,
+            draggedImageInfo.y,
+            draggedImageInfo.width,
+            draggedImageInfo.height
+          );
+
+          // Reset composite mode
+          tempCtx.globalCompositeOperation = "source-over";
+
+          // Store the cleaned snapshot
+          draggedImageInfo.canvasSnapshot = tempCtx.getImageData(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+          );
+        }
+      }
+      // Reset all drawing states to defaults
+      ctx.globalAlpha = 1.0;
+      ctx.globalCompositeOperation = "source-over";
+      ctx.setLineDash([]); // Reset any dashed lines
+
+      // Clear the entire canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Restore the background without the image
+      if (draggedImageInfo.canvasSnapshot) {
+        ctx.putImageData(draggedImageInfo.canvasSnapshot, 0, 0);
+      }
+
+      // Draw the image at its new position
+      ctx.drawImage(
+        draggedImageInfo.img as HTMLImageElement,
+        newX,
+        newY,
+        draggedImageInfo.width,
+        draggedImageInfo.height
+      );
+
+      // Update the draggedImageInfo with the new position
+      setDraggedImageInfo({
+        ...draggedImageInfo,
+        x: newX,
+        y: newY,
+      });
 
       return;
     }
@@ -1149,13 +1411,28 @@ export default function Home(): JSX.Element {
       // For pen tool, we'll collect points and use perfect-freehand later
       const lastX = (ctx as any).lastX || mouseX;
       const lastY = (ctx as any).lastY || mouseY;
-      
+
+      // Check if we're trying to draw over an image
+      if (draggedImageInfo) {
+        // Check if the current point is within the image bounds
+        const isOverImage =
+          mouseX >= draggedImageInfo.x &&
+          mouseX <= draggedImageInfo.x + draggedImageInfo.width &&
+          mouseY >= draggedImageInfo.y &&
+          mouseY <= draggedImageInfo.y + draggedImageInfo.height;
+
+        // Skip drawing if over an image
+        if (isOverImage) {
+          return;
+        }
+      }
+
       // Store the current point
       if (!(ctx as any).points) {
         (ctx as any).points = [];
       }
       (ctx as any).points.push([mouseX, mouseY]);
-      
+
       // Draw with perfect-freehand
       const stroke = getStroke((ctx as any).points, {
         size: penSize,
@@ -1163,37 +1440,27 @@ export default function Home(): JSX.Element {
         smoothing: 0.5,
         streamline: 0.5,
       });
-      
+
       // Convert to SVG path and draw
       const pathData = getSvgPathFromStroke(stroke);
-      
-      // Clear and redraw
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // Restore previous state
-      const state = canvasStates.current[canvasId];
-      if (state && state.undoStack.length > 0) {
-        ctx.putImageData(state.undoStack[state.undoStack.length - 1], 0, 0);
-      }
-      
-      // Draw the new stroke
+
       ctx.fillStyle = penColor;
       ctx.fill(new Path2D(pathData));
     } else if (selectedTool === "eraser") {
       // Eraser can use the original implementation
       ctx.strokeStyle = "rgba(0,0,0,1)";
       ctx.globalCompositeOperation = "destination-out";
-      
+
       const lastX = (ctx as any).lastX || mouseX;
       const lastY = (ctx as any).lastY || mouseY;
-      
+
       ctx.beginPath();
       ctx.moveTo(lastX, lastY);
-      
+
       const midX = (lastX + mouseX) / 2;
       const midY = (lastY + mouseY) / 2;
       ctx.quadraticCurveTo(lastX, lastY, midX, midY);
-      
+
       ctx.lineTo(mouseX, mouseY);
       ctx.stroke();
     }
@@ -1206,9 +1473,294 @@ export default function Home(): JSX.Element {
   const stopDrawing = (canvasId: number): void => {
     if (canvasId !== activeCanvasId) return;
 
+    if (isSelecting && selectedTool === "selection") {
+      setIsSelecting(false);
+
+      // If selection is too small, consider it a click
+      if (selectionStart && selectionEnd) {
+        const x = Math.min(selectionStart.x, selectionEnd.x);
+        const y = Math.min(selectionStart.y, selectionEnd.y);
+        const width = Math.abs(selectionEnd.x - selectionStart.x);
+        const height = Math.abs(selectionEnd.y - selectionStart.y);
+
+        // Only set selectedArea if the selection has a meaningful size
+        if (width > 5 && height > 5) {
+          // Store the selection area for AI search
+          setSelectedArea({ x, y, width, height });
+          
+          // Draw the selection box immediately
+          const canvas = canvasRefs.current[canvasId];
+          if (canvas && originalCanvasState) {
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              // First, restore the original canvas state without any selection boxes
+              ctx.putImageData(originalCanvasState, 0, 0);
+              
+              // Draw the selection box with a semi-transparent fill
+              ctx.fillStyle = 'rgba(66, 133, 244, 0.1)';
+              ctx.fillRect(x, y, width, height);
+              
+              // Draw a dashed border
+              ctx.strokeStyle = 'rgba(66, 133, 244, 0.8)';
+              ctx.lineWidth = 2;
+              ctx.setLineDash([5, 5]);
+              ctx.strokeRect(x, y, width, height);
+              ctx.setLineDash([]);
+            }
+          }
+        } else {
+          // This is a click, not a selection
+          clearSelection();
+          const minSelectionSize = 5;
+          if (
+            Math.abs(selectionEnd.x - selectionStart.x) < minSelectionSize &&
+            Math.abs(selectionEnd.y - selectionStart.y) < minSelectionSize
+          ) {
+            // Check for text at click point
+            const clickPoint = {
+              x: selectionStart.x,
+              y: selectionStart.y,
+              width: 1,
+              height: 1,
+            };
+
+            // Find clicked text element that is still active (not deleted)
+            const clickedText = textElements.find((text) => {
+              // Skip checking if the text has been deleted
+              if (!text.text || text.deleted) return false;
+
+              const canvas = canvasRefs.current[canvasId];
+              if (!canvas) return false;
+
+              const ctx = canvas.getContext("2d");
+              if (!ctx) return false;
+
+              ctx.font = `${text.fontSize}px Arial`;
+              const textWidth = ctx.measureText(text.text).width;
+              const textHeight = text.fontSize * 1.2;
+
+              return (
+                clickPoint.x >= text.position.x &&
+                clickPoint.x <= text.position.x + textWidth &&
+                clickPoint.y >= text.position.y &&
+                clickPoint.y <= text.position.y + textHeight
+              );
+            });
+
+            if (clickedText) {
+              // Set up text editing
+              setTextInputPosition(clickedText.position);
+              setTextInputValue(clickedText.text);
+              setActiveTextId(clickedText.id);
+
+              // Focus the text input after a short delay to ensure it's rendered
+              setTimeout(() => {
+                if (textInputRef.current) {
+                  textInputRef.current.focus();
+
+                  // Set styling
+                  textInputRef.current.style.fontWeight = clickedText.isBold
+                    ? "bold"
+                    : "normal";
+                  textInputRef.current.style.fontStyle = clickedText.isItalic
+                    ? "italic"
+                    : "normal";
+                  textInputRef.current.style.textDecoration =
+                    clickedText.isUnderlined ? "underline" : "none";
+                  textInputRef.current.style.textAlign = clickedText.textAlign;
+                  textInputRef.current.style.fontSize = `${clickedText.fontSize}px`;
+                  textInputRef.current.style.color = clickedText.color;
+                }
+              }, 10);
+            }
+            if (!clickedText && draggedImageInfo) {
+              // Check if click is within image bounds
+              const isClickOnImage =
+                selectionStart.x >= draggedImageInfo.x &&
+                selectionStart.x <=
+                  draggedImageInfo.x + draggedImageInfo.width &&
+                selectionStart.y >= draggedImageInfo.y &&
+                selectionStart.y <=
+                  draggedImageInfo.y + draggedImageInfo.height;
+
+              if (isClickOnImage) {
+                // Set the selected element to this image
+                setSelectedElement({
+                  type: "image",
+                  element: draggedImageInfo,
+                });
+
+                // Calculate offset for dragging
+                const offsetX = selectionStart.x - draggedImageInfo.x;
+                const offsetY = selectionStart.y - draggedImageInfo.y;
+
+                // Update draggedImageInfo with offset
+                setDraggedImageInfo({
+                  ...draggedImageInfo,
+                  offsetX,
+                  offsetY,
+                  selected: true,
+                });
+              } else {
+                // Clicked elsewhere, deselect
+                setSelectedElement(null);
+                if (draggedImageInfo) {
+                  setDraggedImageInfo({
+                    ...draggedImageInfo,
+                    selected: false,
+                  });
+                }
+              }
+            }
+          } else {
+            // This is a selection area, not just a click
+            // Store the selection area for AI search
+            const selectionRect = {
+              x: Math.min(selectionStart.x, selectionEnd.x),
+              y: Math.min(selectionStart.y, selectionEnd.y),
+              width: Math.abs(selectionEnd.x - selectionStart.x),
+              height: Math.abs(selectionEnd.y - selectionStart.y),
+            };
+
+            setSelectedArea(selectionRect);
+
+            // Check if any images are within the selection area
+            if (draggedImageInfo) {
+              // Check if image is within selection
+              const isImageInSelection =
+                draggedImageInfo.x < selectionRect.x + selectionRect.width &&
+                draggedImageInfo.x + draggedImageInfo.width > selectionRect.x &&
+                draggedImageInfo.y < selectionRect.y + selectionRect.height &&
+                draggedImageInfo.y + draggedImageInfo.height > selectionRect.y;
+
+              if (isImageInSelection) {
+                // Set the selected element to this image
+                setSelectedElement({
+                  type: "image",
+                  element: draggedImageInfo,
+                });
+
+                // Update draggedImageInfo
+                setDraggedImageInfo({
+                  ...draggedImageInfo,
+                  selected: true,
+                  // Set offset to center of image for dragging from selection
+                  offsetX: draggedImageInfo.width / 2,
+                  offsetY: draggedImageInfo.height / 2,
+                });
+              }
+            }
+          }
+        }
+      }
+
+      // Clear selection box regardless of whether text was found
+      setSelectionStart(null);
+      setSelectionEnd(null);
+      setTextSelectionBox(null);
+      setShowTextSelectionBox(false);
+
+      // Restore original canvas state without selection box
+      const canvas = canvasRefs.current[canvasId];
+      if (canvas && originalCanvasState) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.putImageData(originalCanvasState, 0, 0);
+
+          // If we have a selected area, draw a semi-transparent highlight over it
+          if (selectedArea) {
+            ctx.fillStyle = "rgba(66, 133, 244, 0.2)";
+            ctx.fillRect(
+              selectedArea.x,
+              selectedArea.y,
+              selectedArea.width,
+              selectedArea.height
+            );
+
+            // Draw a border around the selected area
+            ctx.strokeStyle = "rgba(66, 133, 244, 0.8)";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.strokeRect(
+              selectedArea.x,
+              selectedArea.y,
+              selectedArea.width,
+              selectedArea.height
+            );
+            ctx.setLineDash([]);
+          }
+        }
+      }
+      setOriginalCanvasState(null);
+    }
+
+    if (
+      selectedElement?.type === "image" &&
+      draggedImageInfo?.selected &&
+      draggedImageInfo.tempX !== undefined &&
+      draggedImageInfo.tempY !== undefined
+    ) {
+      // Commit the new position
+      const canvas = canvasRefs.current[canvasId];
+      if (!canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      // Save the current state to undo stack
+      const state = canvasStates.current[canvasId];
+      if (state) {
+        state.undoStack.push(
+          ctx.getImageData(0, 0, canvas.width, canvas.height)
+        );
+        state.redoStack = [];
+      }
+
+      // Clear the entire canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Restore the background without the image
+      if (draggedImageInfo.canvasSnapshot) {
+        ctx.putImageData(draggedImageInfo.canvasSnapshot, 0, 0);
+      }
+
+      // Draw the image at its final position without selection border
+      ctx.drawImage(
+        draggedImageInfo.img as HTMLImageElement,
+        draggedImageInfo.tempX,
+        draggedImageInfo.tempY,
+        draggedImageInfo.width,
+        draggedImageInfo.height
+      );
+
+      // Update the draggedImageInfo with the new position
+      setDraggedImageInfo({
+        ...draggedImageInfo,
+        x: draggedImageInfo.tempX,
+        y: draggedImageInfo.tempY,
+        tempX: undefined,
+        tempY: undefined,
+        canvasSnapshot: null, // Clear the snapshot
+        selected: false, // Deselect the image after positioning
+      });
+
+      // Deselect the element
+      setSelectedElement(null);
+
+      // Save to localStorage
+      if (activeCanvasId !== null) {
+        saveCanvasToLocalStorage(activeCanvasId, canvas);
+      }
+    }
     // Handle finishing image drag
     if (isDragging && draggedImageInfo) {
       setIsDragging(false);
+
+      // Clear the snapshot to free memory
+      setDraggedImageInfo({
+        ...draggedImageInfo,
+        canvasSnapshot: undefined,
+      });
 
       const canvas = canvasRefs.current[canvasId];
       if (!canvas) return;
@@ -1219,7 +1771,10 @@ export default function Home(): JSX.Element {
       // Save the current state after dragging
       const state = canvasStates.current[canvasId];
       if (state) {
-        state.undoStack = [ctx.getImageData(0, 0, canvas.width, canvas.height)];
+        // Push the current state to the undo stack
+        state.undoStack.push(
+          ctx.getImageData(0, 0, canvas.width, canvas.height)
+        );
         state.redoStack = [];
 
         // Save after dragging
@@ -1228,6 +1783,7 @@ export default function Home(): JSX.Element {
 
       return;
     }
+
     if (isDrawingShape && selectedShape) {
       setIsDrawingShape(false);
       setShapeStartPosition(null);
@@ -1293,33 +1849,123 @@ export default function Home(): JSX.Element {
       saveCanvasToLocalStorage(canvasId, canvas);
     }
   };
-  //   if (!canvas) return;
 
-  //   const ctx = canvas.getContext("2d");
-  //   if (!ctx) return;
 
-  //   // Draw text
-  //   ctx.font = `${penSize * 2}px Arial`;
-  //   ctx.fillStyle = penColor;
-  //   ctx.textBaseline = "top";
-  //   ctx.fillText(textInputValue, textInputPosition.x, textInputPosition.y);
+  const drawSelectionBox = () => {
+    if (activeCanvasId === null || !selectedArea) return;
+    
+    const canvas = canvasRefs.current[activeCanvasId];
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    
+    // Get the current state from the undo stack
+    const state = canvasStates.current[activeCanvasId];
+    if (state && state.undoStack.length > 0) {
+      // First restore the clean canvas state without selection
+      const currentState = state.undoStack[state.undoStack.length - 1];
+      ctx.putImageData(currentState, 0, 0);
+      
+      // Now draw the selection box
+      ctx.fillStyle = 'rgba(66, 133, 244, 0.1)';
+      ctx.fillRect(
+        selectedArea.x, 
+        selectedArea.y, 
+        selectedArea.width, 
+        selectedArea.height
+      );
+      
+      // Draw a border around the selected area
+      ctx.strokeStyle = 'rgba(66, 133, 244, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.strokeRect(
+        selectedArea.x, 
+        selectedArea.y, 
+        selectedArea.width, 
+        selectedArea.height
+      );
+      ctx.setLineDash([]);
+    }
+  };
 
-  //   // Update undo stack
-  //   const state = canvasStates.current[activeCanvasId];
-  //   if (state) {
-  //     state.undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-  //     state.redoStack = [];
-  //     saveCanvasToLocalStorage(activeCanvasId, canvas);
-  //   }
+  useEffect(() => {
+    if (selectedArea) {
+      drawSelectionBox();
+    }
+  }, [selectedArea, activeCanvasId]);
 
-  //   setTextInputPosition(null);
-  //   setTextInputValue("");
-  // };
+  const drawTextSelectionBox = (
+    ctx: CanvasRenderingContext2D,
+    box: { x: number; y: number; width: number; height: number }
+  ) => {
+    // Save current context state
+    ctx.save();
+
+    // Draw blue selection rectangle
+    ctx.strokeStyle = "#1a73e8";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([]);
+    ctx.strokeRect(box.x - 4, box.y - 4, box.width + 8, box.height + 8);
+
+    // Draw selection handles (small blue squares)
+    ctx.fillStyle = "#1a73e8";
+
+    // Top-left handle
+    ctx.fillRect(box.x - 6, box.y - 6, 8, 8);
+
+    // Top-right handle
+    ctx.fillRect(box.x + box.width - 2, box.y - 6, 8, 8);
+
+    // Bottom-left handle
+    ctx.fillRect(box.x - 6, box.y + box.height - 2, 8, 8);
+
+    // Bottom-right handle
+    ctx.fillRect(box.x + box.width - 2, box.y + box.height - 2, 8, 8);
+
+    // Restore context state
+    ctx.restore();
+  };
+
+  useEffect(() => {
+    if (activeCanvasId !== null && showTextSelectionBox && textSelectionBox) {
+      const canvas = canvasRefs.current[activeCanvasId];
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          // Redraw the canvas from the last state
+          const state = canvasStates.current[activeCanvasId];
+          if (state && state.undoStack.length > 0) {
+            const lastState = state.undoStack[state.undoStack.length - 1];
+            ctx.putImageData(lastState, 0, 0);
+
+            // Draw the selection box
+            drawTextSelectionBox(ctx, textSelectionBox);
+          }
+        }
+      }
+    }
+  }, [activeCanvasId, showTextSelectionBox, textSelectionBox]);
+
+  useEffect(() => {
+    const savedTextElements = localStorage.getItem("canvasTextElements");
+    if (savedTextElements) {
+      try {
+        setTextElements(JSON.parse(savedTextElements));
+      } catch (e) {
+        console.error("Error loading text elements:", e);
+      }
+    }
+  }, []);
 
   const handleTextConfirm = (): void => {
     if (!textInputPosition || !textInputValue.trim()) {
       setTextInputPosition(null);
       setTextInputValue("");
+      setActiveTextId(null);
+      setShowTextSelectionBox(false);
+      setTextSelectionBox(null);
       return;
     }
 
@@ -1330,7 +1976,7 @@ export default function Home(): JSX.Element {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // Save current state before adding text
+    // Save current state before adding/editing text
     const state =
       activeCanvasId !== null ? canvasStates.current[activeCanvasId] : null;
     if (state) {
@@ -1347,90 +1993,145 @@ export default function Home(): JSX.Element {
     const isUnderlined = textarea.style.textDecoration === "underline";
     const textAlign = textarea.style.textAlign || "left";
 
-    // Set text properties
+    // If editing existing text, first remove it from the canvas
+    if (activeTextId) {
+      // Find the text element
+      const textElement = textElements.find((el) => el.id === activeTextId);
+
+      if (textElement) {
+        // Clear the area where the old text was
+        // First, measure the text dimensions
+        ctx.font = `${textElement.isBold ? "bold " : ""}${
+          textElement.isItalic ? "italic " : ""
+        }${textElement.fontSize}px Arial`;
+
+        const lines = textElement.text.split("\n");
+        const lineHeight = textElement.fontSize * 1.2;
+        let maxWidth = 0;
+
+        // Find the maximum width of all lines
+        lines.forEach((line) => {
+          const metrics = ctx.measureText(line);
+          maxWidth = Math.max(maxWidth, metrics.width);
+        });
+
+        // Clear the area with a small padding
+        const padding = 5;
+        ctx.clearRect(
+          textElement.position.x - padding,
+          textElement.position.y - padding,
+          maxWidth + padding * 2,
+          lineHeight * lines.length + padding * 2
+        );
+      }
+    }
+
+    // Set text properties for new text
     ctx.font = `${isItalic ? "italic " : ""}${isBold ? "bold " : ""}${
       penSize * 2
     }px Arial`;
     ctx.fillStyle = penColor;
     ctx.textAlign = textAlign as CanvasTextAlign;
+    ctx.textBaseline = "top";
 
-        // Calculate maximum width for text wrapping (distance from text position to right edge of canvas)
-        const maxWidth = canvas.width - textInputPosition.x - 20; // 20px padding from right edge
+    // Draw the text on canvas
+    const lines = textInputValue.split("\n");
+    const lineHeight = penSize * 2 * 1.2;
 
-        // Process the text for rendering with word wrapping
-        const words = textInputValue.split(' ');
-        const lines: string[] = [];
-        let currentLine = words[0] || '';
-    
-        // Create wrapped lines based on available width
-        for (let i = 1; i < words.length; i++) {
-          const testLine = currentLine + ' ' + words[i];
-          const metrics = ctx.measureText(testLine);
-          
-          if (metrics.width > maxWidth) {
-            lines.push(currentLine);
-            currentLine = words[i];
-          } else {
-            currentLine = testLine;
-          }
-        }
-        
-        // Add the last line
-        if (currentLine) {
-          lines.push(currentLine);
-        }
-    
-        // Handle manual line breaks (from Enter key)
-        const wrappedLines: string[] = [];
-        lines.forEach(line => {
-          const manualBreaks = line.split('\n');
-          manualBreaks.forEach(brokenLine => {
-            wrappedLines.push(brokenLine);
-          });
-        });
-    
-        let yOffset = textInputPosition.y;
-        const lineHeight = penSize * 2 * 1.2; // 1.2 times font size for line height
-    
-        // Calculate x position based on text alignment
-        let xPos = textInputPosition.x;
-    
-        // Draw each wrapped line
-        wrappedLines.forEach((line) => {
-          // Draw the text with proper alignment
-          ctx.fillText(line, xPos, yOffset);
-    
-          // Add underline if needed
-          if (isUnderlined) {
-            const textWidth = ctx.measureText(line).width;
-            let underlineX = xPos;
-    
-            // Adjust underline position based on text alignment
-            if (textAlign === "center") {
-              underlineX = xPos - textWidth / 2;
-            } else if (textAlign === "right") {
-              underlineX = xPos - textWidth;
-            }
-    
-            ctx.beginPath();
-            ctx.moveTo(underlineX, yOffset + 3);
-            ctx.lineTo(underlineX + textWidth, yOffset + 3);
-            ctx.strokeStyle = penColor;
-            ctx.lineWidth = 1;
-            ctx.stroke();
-          }
-    
-          yOffset += lineHeight;
-        });
-    
-        // Save to localStorage after adding text
-        if (activeCanvasId !== null) {
-          saveCanvasToLocalStorage(activeCanvasId, canvas);
-        }
+    lines.forEach((line, index) => {
+      ctx.fillText(
+        line,
+        textInputPosition.x,
+        textInputPosition.y + index * lineHeight
+      );
+    });
 
-    // Reset text input
+    // Update textElements state
+    if (activeTextId) {
+      setTextElements((prev) =>
+        prev.map((el) =>
+          el.id === activeTextId
+            ? {
+                ...el,
+                text: textInputValue,
+                isBold,
+                isItalic,
+                isUnderlined,
+                textAlign,
+                color: penColor,
+                fontSize: penSize * 2,
+              }
+            : el
+        )
+      );
+    } else {
+      // Add new text element
+      const newTextElement: TextElement = {
+        id: Date.now().toString(),
+        text: textInputValue,
+        position: textInputPosition,
+        fontSize: penSize * 2,
+        color: penColor,
+        isBold,
+        isItalic,
+        isUnderlined,
+        textAlign,
+      };
+      setTextElements((prev) => [...prev, newTextElement]);
+    }
+
+    // Save to localStorage
+    localStorage.setItem(
+      "canvasTextElements",
+      JSON.stringify(
+        activeTextId
+          ? textElements.map((el) =>
+              el.id === activeTextId
+                ? {
+                    ...el,
+                    text: textInputValue,
+                    isBold,
+                    isItalic,
+                    isUnderlined,
+                    textAlign,
+                    color: penColor,
+                    fontSize: penSize * 2,
+                  }
+                : el
+            )
+          : [
+              ...textElements,
+              {
+                id: Date.now().toString(),
+                text: textInputValue,
+                position: textInputPosition,
+                fontSize: penSize * 2,
+                color: penColor,
+                isBold,
+                isItalic,
+                isUnderlined,
+                textAlign,
+              },
+            ]
+      )
+    );
+
+    // Save to localStorage after adding/editing text
+    if (activeCanvasId !== null) {
+      saveCanvasToLocalStorage(activeCanvasId, canvas);
+    }
+
+    // Reset text input and selection
     setTextInputPosition(null);
     setTextInputValue("");
+    setActiveTextId(null);
+    setShowTextSelectionBox(false);
+    setTextSelectionBox(null);
+
+    // Clear any selection state
+    setSelectionStart(null);
+    setSelectionEnd(null);
+    setOriginalCanvasState(null);
   };
 
   const parseFormattedText = (text: string) => {
@@ -1554,6 +2255,7 @@ export default function Home(): JSX.Element {
       saveCanvasToLocalStorage(canvasId, canvas);
     }
   };
+
   const undo = (): void => {
     if (activeCanvasId === null) return;
 
@@ -1626,6 +2328,21 @@ export default function Home(): JSX.Element {
     );
     setLatexExpression([]);
     setDictOfVars({});
+    // Clear the dragged image info when resetting canvas
+    setDraggedImageInfo(null);
+    setSelectedElement(null);
+
+    // Mark text elements on this canvas as deleted instead of removing them
+    setTextElements((prev) =>
+      prev.map((el) => {
+        // Check if this text element is on the current canvas
+        if (activeCanvasId !== null) {
+          return { ...el, deleted: true };
+        }
+        return el;
+      })
+    );
+
     if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
@@ -1666,6 +2383,9 @@ export default function Home(): JSX.Element {
     setResult([]);
     setLatexExpression([]);
     setDictOfVars({});
+    // Clear the dragged image info when resetting all canvases
+    setDraggedImageInfo(null);
+    setSelectedElement(null);
   };
 
   const importImage = (): void => {
@@ -1749,13 +2469,43 @@ export default function Home(): JSX.Element {
     alert("All canvases saved successfully!");
   };
 
-  const handleToolSelect = (tool: "pen" | "eraser" | "textBox"): void => {
+  const handleToolSelect = (
+    tool: "pen" | "eraser" | "textBox" | "selection"
+  ): void => {
+    // First commit any active text input before switching tools
+    if (textInputPosition && textInputValue.trim()) {
+      handleTextConfirm();
+    }
+
+    // Clear text selection when switching away from selection tool
+    if (tool !== "selection") {
+      setSelectedTextId(null);
+      setShowTextSelectionBox(false);
+      setTextSelectionBox(null);
+
+      // Clear any active area selection
+      if (selectedArea && activeCanvasId !== null) {
+        clearSelection();
+      }
+    }
+
+    // Reset selection states when switching tools
+    setSelectionStart(null);
+    setSelectionEnd(null);
+    setOriginalCanvasState(null);
+    setIsSelecting(false);
+
     setSelectedTool(tool);
 
     // When switching to pen, keep the current shape if it exists
     // When switching to other tools, reset the shape selection
     if (tool !== "pen") {
       setSelectedShape(null);
+    }
+
+    // Clear any selected element when switching tools
+    if (tool !== "selection") {
+      setSelectedElement(null);
     }
   };
 
@@ -1803,6 +2553,79 @@ export default function Home(): JSX.Element {
 
     createNewCanvas();
   }
+
+  // Format chat message to handle markdown-style formatting
+  const formatChatMessage = (text: string) => {
+    if (!text) return null;
+
+    // Split by double newlines to handle paragraphs
+    const paragraphs = text.split(/\n\n+/);
+
+    return (
+      <>
+        {paragraphs.map((paragraph, pIndex) => {
+          // Check if paragraph starts with a bullet point
+          const hasBullet = paragraph.trim().startsWith("*");
+          const paragraphContent = hasBullet
+            ? paragraph.trim().substring(1).trim()
+            : paragraph;
+
+          return (
+            <Fragment key={`para-${pIndex}`}>
+              {pIndex > 0 && <div className="mt-4"></div>}
+              <div>
+                {hasBullet && <span>• </span>}
+                {/* Process bold text in paragraph */}
+                {processTextForBold(paragraphContent)}
+              </div>
+            </Fragment>
+          );
+        })}
+      </>
+    );
+  };
+
+  // Helper function to process bold text
+  const processTextForBold = (text: string) => {
+    const boldPattern = /\*\*(.*?)\*\*/g;
+    let lastIndex = 0;
+    const elements = [];
+    let match;
+
+    while ((match = boldPattern.exec(text)) !== null) {
+      // Add text before the match
+      if (match.index > lastIndex) {
+        elements.push(
+          <span key={`text-${lastIndex}`}>
+            {text.substring(lastIndex, match.index)}
+          </span>
+        );
+      }
+
+      // Add the bold text
+      elements.push(
+        <span key={`bold-${match.index}`} className="font-bold">
+          {match[1]}
+        </span>
+      );
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add any remaining text
+    if (lastIndex < text.length) {
+      elements.push(
+        <span key={`text-${lastIndex}`}>{text.substring(lastIndex)}</span>
+      );
+    }
+
+    // If no bold patterns were found, just return the text
+    if (elements.length === 0) {
+      elements.push(<span>{text}</span>);
+    }
+
+    return elements;
+  };
 
   const ResultItemWithSteps = ({ result }: { result: GeneratedResult }) => {
     const [showSteps, setShowSteps] = useState(false);
@@ -2024,12 +2847,15 @@ export default function Home(): JSX.Element {
           setSelectedShape(null);
           break;
         case "2": // Eraser tool
+          handleToolSelect("selection");
+          break;
+        case "3": // Eraser tool
           handleToolSelect("eraser");
           break;
-        case "3": // Text box tool
+        case "4": // Text box tool
           handleToolSelect("textBox");
           break;
-        case "4": // Shapes dropdown
+        case "5": // Shapes dropdown
           setShowShapesDropdown(!showShapesDropdown);
           break;
         case "z": // Undo when Ctrl is pressed
@@ -2044,13 +2870,13 @@ export default function Home(): JSX.Element {
             redo();
           }
           break;
-
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showShapesDropdown]);
+
   return (
     <div className="relative">
       {/* Sidebar */}
@@ -2068,11 +2894,13 @@ export default function Home(): JSX.Element {
           </button>
           {isSidebarOpen && (
             <span>
-              <button
-              onClick={handleInscribeBtn}>
-              <img src={ButtonImages.inscribeImg} className="w-50 h-10  absolute left-12 top-5 md:right-22 md:left-auto" />
+              <button onClick={handleInscribeBtn}>
+                <img
+                  src={ButtonImages.inscribeImg}
+                  className="w-50 h-10  absolute left-12 top-5 md:right-22 md:left-auto"
+                />
               </button>
-              </span>
+            </span>
           )}
 
           <div className="mt-12 space-y-4">
@@ -2409,147 +3237,226 @@ export default function Home(): JSX.Element {
                 onMouseOut={() => stopDrawing(canvas.id)}
                 onTouchCancel={() => stopDrawing(canvas.id)}
               />
-              {canvas.id === activeCanvasId && (
-                <>
-                  {selectedTool === "textBox" && textInputPosition && (
-                    <div
-                    className="text-box-container"
-                    style={{
-                      left: `${textInputPosition.x}px`,
-                      top: `${textInputPosition.y}px`,
-                      maxWidth: `${(canvasRefs.current[activeCanvasId as number]?.width ?? 0) - textInputPosition.x - 20}px`
-                    }}
-                  >
-                      <div
-                        className="text-editing-toolbar bg-gray-800 p-1 mb-1 rounded flex gap-1"
-                        onMouseDown={(e) => e.preventDefault()} // Prevent blur when clicking toolbar
-                      >
-                        <button
-                          className="p-1 hover:bg-gray-700 rounded"
-                          onMouseDown={(e) => {
-                            e.preventDefault(); // Prevent blur
-                            const textarea = textInputRef.current;
-                            if (!textarea) return;
+              {activeCanvasId !== null && textInputPosition && (
+                <div
+                  className="absolute"
+                  style={{
+                    left: textInputPosition.x,
+                    top: textInputPosition.y,
+                    zIndex: 1000,
+                  }}
+                >
+                  <div className="bg-gray-800 p-1 mb-1 rounded flex space-x-2 items-center">
+                    <button
+                      className={`p-1 rounded ${
+                        textInputRef.current?.style.fontWeight === "bold"
+                          ? "bg-blue-500"
+                          : "bg-gray-700"
+                      }`}
+                      onClick={() => {
+                        if (textInputRef.current) {
+                          textInputRef.current.style.fontWeight =
+                            textInputRef.current.style.fontWeight === "bold"
+                              ? "normal"
+                              : "bold";
+                          textInputRef.current.focus();
+                        }
+                      }}
+                      title="Bold"
+                    >
+                      <span className="font-bold text-white">B</span>
+                    </button>
+                    <button
+                      className={`p-1 rounded ${
+                        textInputRef.current?.style.fontStyle === "italic"
+                          ? "bg-blue-500"
+                          : "bg-gray-700"
+                      }`}
+                      onClick={() => {
+                        if (textInputRef.current) {
+                          textInputRef.current.style.fontStyle =
+                            textInputRef.current.style.fontStyle === "italic"
+                              ? "normal"
+                              : "italic";
+                          textInputRef.current.focus();
+                        }
+                      }}
+                      title="Italic"
+                    >
+                      <span className="italic text-white">I</span>
+                    </button>
+                    <button
+                      className={`p-1 rounded ${
+                        textInputRef.current?.style.textDecoration ===
+                        "underline"
+                          ? "bg-blue-500"
+                          : "bg-gray-700"
+                      }`}
+                      onClick={() => {
+                        if (textInputRef.current) {
+                          textInputRef.current.style.textDecoration =
+                            textInputRef.current.style.textDecoration ===
+                            "underline"
+                              ? "none"
+                              : "underline";
+                          textInputRef.current.focus();
+                        }
+                      }}
+                      title="Underline"
+                    >
+                      <span className="underline text-white">U</span>
+                    </button>
 
-                            // Instead of adding ** symbols, apply styling directly to the textarea
-                            const start = textarea.selectionStart;
-                            const end = textarea.selectionEnd;
+                    {/* Add a divider and delete button */}
+                    <div className="border-l border-gray-600 mx-1 h-5"></div>
+                    <button
+                      className="p-1 rounded bg-red-600 hover:bg-red-700"
+                      onClick={() => {
+                        // If editing an existing text element
+                        if (activeTextId) {
+                          // Mark the text element as deleted
+                          const updatedTextElements = textElements.map((el) =>
+                            el.id === activeTextId
+                              ? { ...el, deleted: true }
+                              : el
+                          );
 
-                            // Apply bold styling to the selected text
-                            if (textarea.style.fontWeight === "bold") {
-                              textarea.style.fontWeight = "normal";
-                            } else {
-                              textarea.style.fontWeight = "bold";
+                          setTextElements(updatedTextElements);
+
+                          // Save the updated text elements to localStorage
+                          localStorage.setItem(
+                            "canvasTextElements",
+                            JSON.stringify(updatedTextElements)
+                          );
+
+                          // Redraw the canvas without this text element
+                          if (activeCanvasId !== null) {
+                            const canvas = canvasRefs.current[activeCanvasId];
+                            if (canvas) {
+                              const ctx = canvas.getContext("2d");
+                              if (ctx) {
+                                // Take a snapshot of the current canvas state
+                                const currentState = ctx.getImageData(
+                                  0,
+                                  0,
+                                  canvas.width,
+                                  canvas.height
+                                );
+
+                                // Save current state before removing text
+                                const state =
+                                  canvasStates.current[activeCanvasId];
+                                if (state) {
+                                  state.undoStack.push(currentState);
+                                  state.redoStack = [];
+                                }
+
+                                // Clear the canvas
+                                ctx.clearRect(
+                                  0,
+                                  0,
+                                  canvas.width,
+                                  canvas.height
+                                );
+
+                                // Restore the current state
+                                ctx.putImageData(currentState, 0, 0);
+
+                                // Clear the area where the text was
+                                const textToDelete = updatedTextElements.find(
+                                  (el) => el.id === activeTextId
+                                );
+                                if (textToDelete) {
+                                  // Calculate text dimensions
+                                  ctx.font = `${
+                                    textToDelete.isItalic ? "italic " : ""
+                                  }${textToDelete.isBold ? "bold " : ""}${
+                                    textToDelete.fontSize
+                                  }px Arial`;
+
+                                  const lines = textToDelete.text.split("\n");
+                                  const lineHeight =
+                                    textToDelete.fontSize * 1.2;
+                                  let maxWidth = 0;
+
+                                  // Find the maximum width of all lines
+                                  lines.forEach((line) => {
+                                    const metrics = ctx.measureText(line);
+                                    maxWidth = Math.max(
+                                      maxWidth,
+                                      metrics.width
+                                    );
+                                  });
+
+                                  // Clear the text area with a small padding
+                                  const padding = 2;
+                                  ctx.clearRect(
+                                    textToDelete.position.x - padding,
+                                    textToDelete.position.y - padding,
+                                    maxWidth + padding * 2,
+                                    lines.length * lineHeight + padding * 2
+                                  );
+                                }
+
+                                // Save to localStorage
+                                saveCanvasToLocalStorage(
+                                  activeCanvasId,
+                                  canvas
+                                );
+                              }
                             }
-
-                            // Maintain selection
-                            setTimeout(() => {
-                              textarea.focus();
-                              textarea.setSelectionRange(start, end);
-                            }, 10);
-                          }}
-                          title="Bold"
-                        >
-                          <span className="font-bold text-white">B</span>
-                        </button>
-                        <button
-                          className="p-1 hover:bg-gray-700 rounded"
-                          onMouseDown={(e) => {
-                            e.preventDefault(); // Prevent blur
-                            const textarea = textInputRef.current;
-                            if (!textarea) return;
-
-                            // Apply italic styling directly
-                            const start = textarea.selectionStart;
-                            const end = textarea.selectionEnd;
-
-                            if (textarea.style.fontStyle === "italic") {
-                              textarea.style.fontStyle = "normal";
-                            } else {
-                              textarea.style.fontStyle = "italic";
-                            }
-
-                            // Maintain selection
-                            setTimeout(() => {
-                              textarea.focus();
-                              textarea.setSelectionRange(start, end);
-                            }, 10);
-                          }}
-                          title="Italic"
-                        >
-                          <span className="italic text-white">I</span>
-                        </button>
-                        <button
-                          className="p-1 hover:bg-gray-700 rounded"
-                          onMouseDown={(e) => {
-                            e.preventDefault(); // Prevent blur
-                            const textarea = textInputRef.current;
-                            if (!textarea) return;
-
-                            // Apply underline styling directly
-                            const start = textarea.selectionStart;
-                            const end = textarea.selectionEnd;
-
-                            if (textarea.style.textDecoration === "underline") {
-                              textarea.style.textDecoration = "none";
-                            } else {
-                              textarea.style.textDecoration = "underline";
-                            }
-
-                            // Maintain selection
-                            setTimeout(() => {
-                              textarea.focus();
-                              textarea.setSelectionRange(start, end);
-                            }, 10);
-                          }}
-                          title="Underline"
-                        >
-                          <span className="underline text-white">U</span>
-                        </button>
-                      </div>
-                      <textarea
-                        ref={textInputRef}
-                        value={textInputValue}
-                        onChange={(e) => {
-                          setTextInputValue(e.target.value);
-                          // Auto-expand textarea
-                          e.target.style.height = "auto";
-                          e.target.style.height = `${e.target.scrollHeight}px`;
-                        }}
-                        onBlur={handleTextConfirm}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey)
-                            handleTextConfirm();
-                          if (e.key === "Escape") {
-                            setTextInputPosition(null);
-                            setTextInputValue("");
                           }
-                        }}
-                        style={{
-                          background: "rgba(255, 255, 255, 0.1)",
-                          color: penColor,
-                          border: "2px solid #4299e1",
-                          outline: "none",
-                          fontSize: `${penSize * 2}px`,
-                          pointerEvents: "all",
-                          whiteSpace: "pre-wrap",
-                          padding: "8px",
-                          borderRadius: "4px",
-                          width: "100%",
-                          maxHeight: "200px",
-                          overflowY: "auto",
-                          wordWrap: "break-word",
-                          wordBreak: "break-word",
-                          overflowWrap: "break-word",
-                          boxSizing: "border-box"
-                        }}
-                        className="text-input"
-                      />
-                    </div>
-                  )}{" "}
-                </>
-              )}
+                        }
 
+                        // Close the text input
+                        setTextInputPosition(null);
+                        setTextInputValue("");
+                        setActiveTextId(null);
+                        setShowTextSelectionBox(false);
+                        setTextSelectionBox(null);
+                      }}
+                      title="Delete Text"
+                    >
+                      <span className="text-white">🗑️</span>
+                    </button>
+                  </div>
+                  <textarea
+                    ref={textInputRef}
+                    value={textInputValue}
+                    onChange={(e) => setTextInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleTextConfirm();
+                      } else if (e.key === "Escape") {
+                        setTextInputPosition(null);
+                        setTextInputValue("");
+                        setActiveTextId(null);
+                        setShowTextSelectionBox(false);
+                      }
+                    }}
+                    className="border border-blue-500 bg-transparent text-black p-1 outline-none"
+                    style={{
+                      minWidth: "150px",
+                      minHeight: "30px",
+                      resize: "both",
+                      fontFamily: "Arial",
+                      fontSize: `${penSize * 2}px`,
+                      fontWeight:
+                        textInputRef.current?.style.fontWeight || "normal",
+                      fontStyle:
+                        textInputRef.current?.style.fontStyle || "normal",
+                      textDecoration:
+                        textInputRef.current?.style.textDecoration || "none",
+                      textAlign:
+                        (textInputRef.current?.style.textAlign as any) ||
+                        "left",
+                      color: penColor,
+                    }}
+                    autoFocus
+                  />
+                </div>
+              )}
               <div className="absolute top-2 right-2 flex gap-2">
                 <span className="bg-gray-700 px-2 py-1 rounded text-white text-xs">
                   {canvas.id === activeCanvasId
@@ -2600,89 +3507,74 @@ export default function Home(): JSX.Element {
               ☰
             </button>
             <span>
-            <button
-            onClick={handleInscribeBtn}
-            className=" absolute left-12 top-4  cursor-pointer">
-              <img src={ButtonImages.inscribeImg} className="w-30 h-8 " />
+              <button
+                onClick={handleInscribeBtn}
+                className=" absolute left-12 top-4  cursor-pointer"
+              >
+                <img src={ButtonImages.inscribeImg} className="w-30 h-8 " />
               </button>
-              </span>
+            </span>
 
             <div className="tools flex justify-center items-center flex-1 overflow-x-auto gap-1 bg-gray-800 ">
               {!isMobile && (
                 <>
-                  <div className="relative">
                   <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowPenDropdown(!showPenDropdown);
-                      }}
-                      className={`tool p-2 rounded-md hover:bg-[#403d6a] ${
-                        selectedTool === "pen" || selectedTool === "textBox"
-                          ? "bg-[#403d6a]"
-                          : "bg-gray-700"
-                      }`}
-                      title="Drawing Tools (1)"
-                    >
-                      <div className="relative">
-                        <img
-                          src={ButtonImages.pencilImg}
-                          alt="Drawing Tools"
-                          className="w-5 h-5"
-                        />
-                        <span className="absolute -bottom-0 -right-1 text-xs text-white bg-transparent w-2 h-2 flex items-center justify-center">
-                          1
-                        </span>
-                      </div>
-                    </button>                    
-                    {showPenDropdown && (
-                      <div
-                        className="fixed mt-1 bg-gray-800 rounded-md shadow-lg z-[9999] border border-gray-700 w-40"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          title="Pen"
-                          className="flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
-                          onClick={() => {
-                            handleToolSelect("pen");
-                            setSelectedShape(null);
-                            setShowPenDropdown(false);
-                          }}
-                        >
-                          <div className="w-5 h-5 flex items-center justify-center">
-                            <img
-                              src={ButtonImages.pencilImg}
-                              alt="Pencil"
-                              className="w-4 h-4"
-                            />
-                          </div>
-                          <span>Pen</span>
-                        </button>
-                        <button
-                          title="Draw Text"
-                          className="flex items-center gap-2 w-full p-2 text-gray-300 hover:bg-gray-700"
-                          onClick={() => {
-                            handleToolSelect("textBox");
-                            setShowPenDropdown(false);
-                          }}
-                        >
-                          <div className="w-5 h-5 flex items-center justify-center">
-                            <img
-                              src={ButtonImages.textBoxImage}
-                              alt="Text Box"
-                              className="w-4 h-4"
-                            />
-                          </div>
-                          <span>Draw Text</span>
-                        </button>
-                      </div>
-                    )}                  
-                    </div>                  
+                    onClick={() => {
+                      // First commit any active text input before switching tools
+                      if (
+                        selectedTool === "textBox" &&
+                        textInputPosition &&
+                        textInputValue.trim()
+                      ) {
+                        return; // Exit the function her
+                      }
+
+                      handleToolSelect("pen");
+                    }}
+                    className={`tool p-2 rounded-md hover:bg-[#403d6a] ${
+                      selectedTool === "pen" ? "bg-[#403d6a]" : "bg-gray-700"
+                    }`}
+                    title="Pen (1)"
+                  >
+                    <div className="relative">
+                      <img
+                        src={ButtonImages.pencilImg}
+                        alt="Drawing Tools"
+                        className="w-5 h-5"
+                      />
+                      <span className="absolute -bottom-0 -right-1 text-xs text-white bg-transparent w-2 h-2 flex items-center justify-center">
+                        1
+                      </span>
+                    </div>
+                  </button>
+
+                  <button
+                    className={`tool  p-2 rounded-md hover:bg-[#403d6a] 
+                    ${
+                      selectedTool === "selection"
+                        ? "bg-[#403d6a]"
+                        : "bg-gray-700"
+                    }`}
+                    onClick={() => handleToolSelect("selection")}
+                    title="Selection Tool (2)"
+                  >
+                    <div className="relative">
+                      <img
+                        src={ButtonImages.selectionBtn}
+                        alt="Selection"
+                        className="w-5 h-5"
+                      />
+                      <span className="absolute -bottom-0 -right-3 text-xs text-white bg-transparent  w-2 h-2 flex items-center justify-center">
+                        2
+                      </span>
+                    </div>
+                  </button>
                   <button
                     onClick={() => handleToolSelect("eraser")}
                     className={`tool p-2 rounded-md hover:bg-[#403d6a] ${
                       selectedTool === "eraser" ? "bg-[#403d6a]" : "bg-gray-700"
                     }`}
-                    title="Eraser (2)"
+                    title="Eraser (3)"
                   >
                     <div className="relative">
                       <img
@@ -2691,18 +3583,20 @@ export default function Home(): JSX.Element {
                         className="w-5 h-5"
                       />
                       <span className="absolute -bottom-0 -right-1 text-xs text-white bg-transparent  w-2 h-2 flex items-center justify-center">
-                        2
+                        3
                       </span>
                     </div>
                   </button>
                   <button
-                    onClick={() => handleToolSelect("textBox")}
+                    onClick={() => {
+                      handleToolSelect("textBox");
+                    }}
                     className={`tool p-2 rounded-md hover:bg-[#403d6a] ${
                       selectedTool === "textBox"
                         ? "bg-[#403d6a]"
                         : "bg-gray-700"
                     }`}
-                    title="Text Box (3)"
+                    title="Text Box (4)"
                   >
                     <div className="relative">
                       <img
@@ -2711,7 +3605,7 @@ export default function Home(): JSX.Element {
                         className="w-5 h-5"
                       />
                       <span className="absolute -bottom-0 -right-1 text-xs text-white bg-transparent  w-2 h-2 flex items-center justify-center">
-                        3
+                        4
                       </span>
                     </div>
                   </button>
@@ -2731,10 +3625,10 @@ export default function Home(): JSX.Element {
                           src={ButtonImages.shapesBtn}
                           alt="Shapes"
                           className="w-5 h-5"
-                          title="Shapes"
+                          title="Shapes (5)"
                         />
                         <span className="absolute -bottom-0 -right-2 text-xs text-white bg-transparent  w-2 h-2 flex items-center justify-center">
-                          4
+                          5
                         </span>
                       </div>
                     </button>
@@ -2879,7 +3773,6 @@ export default function Home(): JSX.Element {
                     </button>
                   </>
                 )}
-
                 <button
                   className="tool p-2 rounded-full bg-[#403d6a] hover:bg-[#2c2a46]"
                   onClick={() => runRoute()}
@@ -3048,7 +3941,7 @@ export default function Home(): JSX.Element {
                       : "bg-gray-800 text-gray-200"
                   }`}
                 >
-                  <div className="text-sm">{msg.text}</div>
+                  <div className="text-sm">{formatChatMessage(msg.text)}</div>
                   <div className="text-xs text-gray-400 mt-1">
                     {msg.timestamp.toLocaleTimeString([], {
                       hour: "2-digit",
@@ -3117,6 +4010,18 @@ export default function Home(): JSX.Element {
           </div>
         </div>
       </div>{" "}
+      {selectedArea && (
+        <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center z-50">
+          <span>Active Selection</span>
+          <br />
+          <button
+            onClick={clearSelection}
+            className="ml-3 bg-blue-700 hover:bg-blue-800 px-2 py-1 rounded"
+          >
+            Clear
+          </button>
+        </div>
+      )}
     </div>
   );
 }
