@@ -33,7 +33,7 @@ import re
 from PIL import Image
 from constants import GEMINI_API_KEY
 
-genai.configure(api_key="AIzaSyBBwiWQ7QpQk1Bd0Y0UA7xbGklu-_mscaM")
+genai.configure=GEMINI_API_KEY
 
 def analyze_image(img: Image, dict_of_vars: dict):
     model = genai.GenerativeModel(model_name="gemini-1.5-flash")
