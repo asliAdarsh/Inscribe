@@ -1,0 +1,28 @@
+# Python-specific ignores
+# Byte-code files
+*.pyc
+__pycache__/
+
+# Virtual environment
+# Change "venv" to the name of your virtual environment folder if it's different
+venv/
+.venv/
+
+# Environment variables and secrets
+.env
+*.env
+.flaskenv
+
+# Developed packages
+*.egg-info/
+.installed.cfg
+pip-wheel-metadata/
+
+# Build artifacts
+dist/
+build/
+*.whl
+
+# Specific editors/tools (optional)
+.idea/  # For PyCharm or other JetBrains IDEs
+.vscode/ # VS Code settings (optional, only ignore user-specific settings)
